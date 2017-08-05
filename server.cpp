@@ -3,20 +3,20 @@
 #include <atomic>
 #include <iostream>
 #include <functional>
-#include "entity.h"
-#include "game.h"
 #include "common.h"
+#include "world.h"
+#include "command.h"
 
 // Oh dear
 #define	SPAWN_LOC_1		sf::Vector2f(400.f, 32.f)
 #define SPAWN_LOC_2		sf::Vector2f(400.f, 568.f)
 
-#define STATE_UPDATE_FREQUENCY	250
-
 namespace Network
 {
 	namespace Server
 	{
+		constexpr int UPDATE_INTERVAL_MS = 300;
+
 		// Threads
 		std::thread _serverThread;
 		std::atomic<bool> _isServerRunning;
@@ -25,143 +25,83 @@ namespace Network
 		sf::TcpListener _listener;
 		sf::SocketSelector _selector;
 
-		time_point _nextStateUpdate;
+		time_point _nextUpdatePoint;
 
-		// For assigning ids
-		ClientID _clientID = 0;
+		std::vector<ConnectionPtr> _connections;
 
-		// RECODE: Raw pointers
-		ClientSocket* _clients[MAX_CLIENTS];
-		int _clientCount = 0;
+		// Game
+		World _world;
+		uint64_t _elapsedTime;
 
-		// List because vector moves around in memory as it is resized
-		EntityContainer _entities;
-
-		float _dt = 0.016f;
-
-		void DropClient(ClientSocket& cs);
+		std::vector<ConnectionPtr>::iterator DropClient(ConnectionPtr connection);
 
 		// SEND FUNCTIONS //////////////////////////////////
 
-		DEF_SEND_PARAM(PACKET_SERVER_JOIN)(ClientSocket& cs, const ClientSocket& other)
-		{
-			// Inform a client that other has joined
-
-			auto p = InitPacket(PACKET_SERVER_JOIN);
-			p << other.info.id << other.info.entity->position;
-
-			cs.send(p);
-		}
-
-		DEF_SEND_PARAM(PACKET_SERVER_PLAYER_INFO)(ClientSocket& cs, ClientID cid, const Entity& entity);
-
 		DEF_SERVER_SEND(PACKET_SERVER_WELCOME)
 		{
-			ClientID newID = _clientID++;
-			cs.info.id = newID;
-
-			// Inform new client of their id
 			auto p = InitPacket(PACKET_SERVER_WELCOME);
+			p << connection->pid;
 
-			// Create their entity
-			// TODO: In case of spectatos, this cannot just be here
-			_entities.emplace_back(std::make_unique<Entity>());
-			cs.info.entity = _entities.back().get();
-			// RECODE: uid != cid
-			cs.info.entity->uid = newID;
-			cs.info.entity->position = (_clientCount % 2) ? SPAWN_LOC_1 : SPAWN_LOC_2;
-
-			p << newID << cs.info.entity->position;
-			cs.send(p);
-
-			// Inform old clients of new client,
-			// and new client of old clients
-			for (int i = 0; i < MAX_CLIENTS; ++i)
-			{
-				if (!_clients[i])
-					continue;
-
-				// New of old
-				if (_clients[i] != &cs)
-					SEND(PACKET_SERVER_JOIN)(cs, *_clients[i]);
-				// New client gets the player info of even themselves
-				SEND(PACKET_SERVER_PLAYER_INFO)(cs, _clients[i]->info.id, *_clients[i]->info.entity);
-
-				if (_clients[i] == &cs)
-					continue;
-
-				// Old of new
-				SEND(PACKET_SERVER_JOIN)(*_clients[i], cs);
-				SEND(PACKET_SERVER_PLAYER_INFO)(*_clients[i], cs.info.id, *cs.info.entity);
-			}
+			connection->socket.send(p);
 		}
 
-		DEF_SEND_PARAM(PACKET_SERVER_QUIT)(ClientSocket& cs, const ClientSocket& other)
+		DEF_SERVER_SEND(PACKET_SERVER_FULL)
 		{
-			// Inform a client that other has quit
-
-			auto p = InitPacket(PACKET_SERVER_QUIT);
-			p << other.info.id;
-			cs.send(p);
+			auto p = InitPacket(PACKET_SERVER_FULL);
+			
+			std::cout << "SERVER: A client tried to join, but we are at capacity" << std::endl;
+			connection->socket.send(p);
 		}
 
-		DEF_SEND_PARAM(PACKET_SERVER_PLAYER_INFO)(ClientSocket& cs, ClientID cid, const Entity& player)
+		DEF_SEND_PARAM(PACKET_SERVER_UPDATE)(ConnectionPtr connection, const WorldSnapshot& snapshot)
 		{
-			// Inform a client of cid's entity's current position on the server
+			auto p = InitPacket(PACKET_SERVER_UPDATE);
+			p << snapshot;
 
-			auto p = InitPacket(PACKET_SERVER_PLAYER_INFO);
-			p << cid << cs.lastSeqNum << player.position;
-
-			cs.send(p);
+			connection->socket.send(p);
 		}
 
 		// RECEIVE FUNCTIONS ///////////////////////////////
 
 		DEF_SERVER_RECV(PACKET_CLIENT_JOIN)
 		{
-			std::cout << "SERVER: New client has joined" << std::endl;
+			uint32_t colour;
+			p >> colour;
 
-			SEND(PACKET_SERVER_WELCOME)(cs);
-		}
+			Player player;
+			player.SetColour(colour);
 
-		DEF_SERVER_RECV(PACKET_CLIENT_QUIT)
-		{
-			std::cout << "SERVER: Client #" << (int) cs.info.id << " closed their connection" << std::endl;
-			std::cerr << "REM: PACKET_CLIENT_QUIT not handled yet" << std::endl;
-
-			cs.hasQuit = true;
-			//DropClient(cs);
-		}
-
-		DEF_SERVER_RECV(PACKET_CLIENT_MOVE)
-		{
-			int seqNum;
-			sf::Vector2f delta;
-			p >> seqNum >> delta;
-
-			auto player = GetEntityByUID(_entities, cs.info.id);
-
-			if (player == _entities.end())
+			if (_world.AddPlayer(player))
 			{
-				std::cerr << "SERVER: Cannot find client #" << (int) cs.info.id << "'s entity" << std::endl;
-				return;
-			}
+				// There is room for this client
+				connection->pid = player.pid();
 
-			// RECODE: Don't want to execute game logic every time a packet is received(?)
-			cs.lastSeqNum = seqNum;
-			(*player)->position += delta;
+				std::cout << "SERVER: Sent client #" << (int) player.pid() << " welcome packet" << std::endl;
+				SEND(PACKET_SERVER_WELCOME)(connection);
+			}
+			else
+			{
+				SEND(PACKET_SERVER_FULL)(connection);
+				connection->active = false;
+			}
 		}
 
-		using ServerReceiveCallback = std::function<void(ClientSocket&, sf::Packet&)>;
+		DEF_SERVER_RECV(PACKET_CLIENT_CMD)
+		{
+			uint8_t pid;
+			Command cmd;
+			p >> pid >> cmd;
+
+			_world.RunCommand(cmd, pid);
+		}
+
+		using ServerReceiveCallback = std::function<void(ConnectionPtr, sf::Packet&)>;
 		const ServerReceiveCallback _receivePacket[] = {
-			RECV(PACKET_CLIENT_JOIN),
-			nullptr,					// PACKET_SERVER_WELCOME
-			nullptr,					// PACKET_SERVER_JOIN
-			nullptr,					// PACKET_SERVER_FULL
-			RECV(PACKET_CLIENT_QUIT),
-			nullptr,					// PACKET_SERVER_QUIT
-			nullptr,					// PACKET_SERVER_PLAYER_INFO
-			RECV(PACKET_CLIENT_MOVE),
+				RECV(PACKET_CLIENT_JOIN),
+				nullptr,					// PACKET_SERVER_WELCOME
+				nullptr,					// PACKET_SERVER_FULL
+				RECV(PACKET_CLIENT_CMD),
+				nullptr,					// PACKET_SERVER_UPDATE
 		};
 
 		bool StartListening(const sf::IpAddress& address, Port port)
@@ -177,63 +117,52 @@ namespace Network
 
 		void AcceptClients()
 		{
-			Socket newClient = GetNewSocket();
-			auto ret = _listener.accept(*newClient);
+			_connections.emplace_back(std::make_shared<Connection>());
+			ConnectionPtr newConnection = _connections.back();
 
-			if (ret != Status::Done || _clientCount >= MAX_CLIENTS)
+			auto ret = _listener.accept(newConnection->socket);
+
+			if (ret != Status::Done)
 			{
 				std::cout << "SERVER: There was a failed/ignored connection" << std::endl;
-				if (newClient)
-					newClient->disconnect();
 				return;
 			}
 
 			std::cout << "SERVER: Accepted a new client" << std::endl;
 
-			newClient->setBlocking(false);
-			_selector.add(*newClient);
-
-			// RECODE: Raw pointers
-			_clients[_clientCount++] = new ClientSocket(std::move(newClient));
+			newConnection->active = true;
+			newConnection->socket.setBlocking(false);
+			_selector.add(newConnection->socket);
 		}
 
-		void DropClient(ClientSocket& cs)
+		std::vector<ConnectionPtr>::iterator DropClient(ConnectionPtr connection)
 		{
-			std::cout << "SERVER: Dropping client " << (int) cs.info.id << std::endl;
-			_selector.remove(*cs.socket);
+			std::cout << "SERVER: Dropping client " << (int) connection->pid << std::endl;
+			_selector.remove(connection->socket);
 
-			for (int i = 0; i < _clientCount; ++i)
-			{
-				if (cs.info.id == _clients[i]->info.id)
-				{
-					delete _clients[i];
-					_clients[i] = nullptr;
-					break;
-				}
-				else
-				{
-					SEND(PACKET_SERVER_QUIT)(*_clients[i], cs);
-				}
-			}
 
-			--_clientCount;
+			_world.RemovePlayer(connection->pid);
+			connection->socket.disconnect();
+
+			return _connections.erase(std::remove(_connections.begin(), _connections.end(), connection), _connections.end());
 		}
 
-		void Receive(ClientSocket& cs)
+		void Receive(ConnectionPtr connection)
 		{
 			while (true)
 			{
 				sf::Packet p;
-				auto ret = cs.receive(p);
+				auto ret = connection->socket.receive(p);
 
 				switch (ret)
 				{
 					case Status::Disconnected:
-						DropClient(cs);
+						connection->active = false;
 						return;
 					case Status::Partial:
 						std::cerr << "SERVER: Partial receive" << std::endl;
-						break;
+						connection->active = false;
+						return;
 					case Status::NotReady:
 						return;
 				}
@@ -241,9 +170,9 @@ namespace Network
 				uint8_t type;
 				p >> type;
 
-				if (type < PACKET_END && _receivePacket[type] != nullptr && !cs.hasQuit)
+				if (type < PACKET_END && _receivePacket[type] != nullptr && connection->active)
 				{
-					_receivePacket[type](cs, p);
+					_receivePacket[type](connection, p);
 				}
 			}
 		}
@@ -255,7 +184,6 @@ namespace Network
 			if (!StartListening(address, port))
 				return;
 
-			sf::Clock deltaClock;
 			while (_isServerRunning)
 			{
 				if (_selector.wait(sf::milliseconds(WAIT_TIME_MS)))
@@ -263,41 +191,44 @@ namespace Network
 					if (_selector.isReady(_listener))
 						AcceptClients();
 
-					for (int i = 0; i < _clientCount; ++i)
+					for (auto it = _connections.begin(); it != _connections.end(); )
 					{
-						if (_selector.isReady(*_clients[i]->socket))
-							Receive(*_clients[i]);
+						ConnectionPtr connection = *it;
+
+						if (_selector.isReady(connection->socket))
+						{
+							if (connection->active)
+								Receive(connection);
+							else
+							{
+								it = DropClient(connection);
+								continue;
+							}
+						}
+
+						++it;
 					}
 				}
 
 				// STATE UPDATE
-				if (_nextStateUpdate <= now())
+				if (now() >= _nextUpdatePoint)
 				{
-					for (auto it = _entities.begin(); it != _entities.end(); ++it)
-					{
-						for (int i = 0; i < MAX_CLIENTS; ++i)
-						{
-							if (!_clients[i] || _clients[i]->hasQuit)
-								continue;
+					WorldSnapshot snapshot;
+					snapshot.snapshot = _world;
+					snapshot.serverTime = _elapsedTime;
 
-							if (!_clients[i]->info.entity)
-								continue;
+					for (auto& connection : _connections)
+						SEND(PACKET_SERVER_UPDATE)(connection, snapshot);
 
-							ClientSocket& cs = *_clients[i];
-							SEND(PACKET_SERVER_PLAYER_INFO)(cs, (*it)->uid, *(*it));
-						}
-					}
-
-					_nextStateUpdate = now() + ms(STATE_UPDATE_FREQUENCY);
+					_elapsedTime += UPDATE_INTERVAL_MS;
+					_nextUpdatePoint = now() + ms(UPDATE_INTERVAL_MS);
 				}
 			}
-
-			_dt = deltaClock.restart().asSeconds();
 		}
 
 		bool StartServer(const sf::IpAddress& address, Port port)
 		{
-			_nextStateUpdate = now() + ms(STATE_UPDATE_FREQUENCY);
+			_nextUpdatePoint = now() + ms(UPDATE_INTERVAL_MS);
 			_isServerRunning = true;
 			_serverThread = std::thread([&] { ServerTask(address, port); });
 

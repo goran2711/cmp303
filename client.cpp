@@ -2,10 +2,11 @@
 #include <iostream>
 #include <functional>
 #include <SFML/Graphics.hpp>
-#include <map>
-#include "entity.h"
-#include "game.h"
+#include "world.h"
+#include "command.h"
 #include "common.h"
+
+#define INTERPOLATION_TIME_MS	300
 
 namespace Network
 {
@@ -20,32 +21,34 @@ namespace Network
 		std::unique_ptr<sf::RenderWindow> _window;
 
 		// Game
-		VisualEntity _player;
-		VisualEntity _opponent;
+		uint64_t _elapsedTime = 0;
 
-		// Client input history
-		int _seqNum = 0;
-		std::map<int, sf::Vector2f> _deltaHistory;
+		uint8_t _myID;
+		World _world;
+		std::list<WorldSnapshot> _snapshots;
+
+		// TODO: Store 'commands', which represent the state of the keyboard
+		// at a certain frame.
+		// Commands are only stored when it's considered an "eventful" frame, i.e. the player moves.
+		// They are also only stored when client-side prediction is turned on
+		// The commands are run by the player, and are gived to the player through the world
+		std::list<Command> _commands;
 
 		// SEND FUNCTIONS //////////////////////////////////
 
 		DEF_CLIENT_SEND(PACKET_CLIENT_JOIN)
 		{
 			auto p = InitPacket(PACKET_CLIENT_JOIN);
+			p << 0xFFFFFFFF;
+
+			std::cout << "CLIENT: Sent join request to server" << std::endl;
 			_socket.send(p);
 		}
 
-		DEF_CLIENT_SEND(PACKET_CLIENT_QUIT)
+		DEF_SEND_PARAM(PACKET_CLIENT_CMD)(const Command& cmd)
 		{
-			auto p = InitPacket(PACKET_CLIENT_QUIT);
-			_socket.send(p);
-		}
-
-		DEF_SEND_PARAM(PACKET_CLIENT_MOVE)(const sf::Vector2f& delta)
-		{
-			auto p = InitPacket(PACKET_CLIENT_MOVE);
-			// NOTE: May be bad
-			p << _seqNum << delta;
+			auto p = InitPacket(PACKET_CLIENT_CMD);
+			p << _myID << cmd;
 
 			_socket.send(p);
 		}
@@ -54,89 +57,66 @@ namespace Network
 
 		DEF_CLIENT_RECV(PACKET_SERVER_WELCOME)
 		{
-			ClientID id;
-			sf::Vector2f initialPos;
-			p >> id >> initialPos;
+			p >> _myID;
 
-			std::cout << "CLIENT: Server has given me id #" << (int) id << std::endl;
-
-			_player.isPlayer = true;
-			_player.sprite.setFillColor(sf::Color(0x00AEAEFF));
-			_player.sprite.setSize({ 64.f, 18.f });
-			_player.position = initialPos;
-			_player.id = id;
-
-			return RECEIVE_ERROR_OK;
-		}
-
-		DEF_CLIENT_RECV(PACKET_SERVER_JOIN)
-		{
-			// Server letting us know of a client that joined
-			ClientID id;
-			sf::Vector2f initialPosition;
-			p >> id >> initialPosition;
-
-			std::cout << "CLIENT: Learned that client #" << (int) id << " has joined" << std::endl;
-
-			// TODO: If spectators, don't do this
-			_opponent.position = initialPosition;
-			_opponent.sprite.setFillColor(sf::Color(0xAE00AEFF));
-			_opponent.sprite.setSize({ 64.f, 18.f });
-			_opponent.id = id;
+			std::cout << "CLIENT: Server assigned us id #" << (int) _myID << std::endl;
+			_window = std::make_unique<sf::RenderWindow>(sf::VideoMode(800, 600), "CMP303");
+			_window->setFramerateLimit(60);
+			_window->requestFocus();
 
 			return RECEIVE_ERROR_OK;
 		}
 
 		DEF_CLIENT_RECV(PACKET_SERVER_FULL)
 		{
-			return RECEIVE_ERROR_OK;
+			std::cout << "CLIENT: Could not join server because it is full" << std::endl;
+
+			return RECEIVE_ERROR_OTHER;
 		}
 
-		DEF_CLIENT_RECV(PACKET_SERVER_QUIT)
+		DEF_CLIENT_RECV(PACKET_SERVER_UPDATE)
 		{
-			ClientID otherID;
-			p >> otherID;
+			WorldSnapshot snapshot;
+			p >> snapshot;
 
-			if (otherID == _player.id)
-				std::cout << "CLIENT: Server asked us to leave" << std::endl;
-			else if (otherID == _opponent.id)
-				std::cout << "CLIENT: Opponent left" << std::endl;
-			else
-				std::cerr << "CLIENT: Unknown client #" << (int) otherID << " left" << std::endl;
+			// If we currently have no snapshots, or the latest snapshot is not from this frame
+			if (_snapshots.empty() || _snapshots.back().clientTime != _elapsedTime)
+				_snapshots.push_back(snapshot);
 
-			return RECEIVE_ERROR_OK;
-		}
+			_snapshots.back().clientTime = _elapsedTime;
 
-		DEF_CLIENT_RECV(PACKET_SERVER_PLAYER_INFO)
-		{
-			ClientID cid;
-			p >> cid;
+			// Delete old snapshots
+			// renderTime: The the at which the current interpolation would have started
+			uint64_t renderTime = (_elapsedTime > INTERPOLATION_TIME_MS) ? _elapsedTime - INTERPOLATION_TIME_MS : 0;
 
-			int seqNum;
-			sf::Vector2f pos;
-			p >> seqNum >> pos;
-
-			// TODO: Move this(?)
-			// This is us, do reconcilliation
-			if (cid == _player.id)
+			bool removeNext = false;
+			auto it = _snapshots.rbegin();
+			while (it != _snapshots.rend())
 			{
-				auto it = _deltaHistory.find(seqNum);
-				if (it != _deltaHistory.end())
-				{
-					it = _deltaHistory.erase(_deltaHistory.begin(), std::next(it));
-
-					while (it != _deltaHistory.end())
-					{
-						pos += it->second;
-						++it;
-					}
-				}
-
-				_player.position = pos;
+				if (removeNext)
+					it = std::list<WorldSnapshot>::reverse_iterator(_snapshots.erase(it.base()));
+				// If this snapshot is older than the beginning of the current interpolation
+				// and the snapshot is 
+				else if (it->clientTime <= renderTime && it->clientTime > INTERPOLATION_TIME_MS)
+					removeNext = true;
+				++it;
 			}
-			// This is not us, interpolate
-			else
-				_opponent.AddSample(pos);
+
+			_world = _snapshots.back().snapshot;
+
+			// Prediction + reconciliation
+			Player* me = _world.GetPlayer(_myID);
+			if (me)
+			{
+				// Last commandID on server
+				int lastCommandID = me->lastCommandID();
+
+				// Remove older commands
+				_commands.erase(std::remove_if(_commands.begin(), _commands.end(), [lastCommandID](const auto& cmd) { return cmd.id <= lastCommandID; }), _commands.end());
+
+				for (const auto& cmd : _commands)
+					_world.RunCommand(cmd, _myID);
+			}
 
 			return RECEIVE_ERROR_OK;
 		}
@@ -145,12 +125,9 @@ namespace Network
 		const ClientReceiveCallback _receivePacket[] = {
 			nullptr,						// PACKET_CLIENT_JOIN
 			RECV(PACKET_SERVER_WELCOME),
-			RECV(PACKET_SERVER_JOIN),
 			RECV(PACKET_SERVER_FULL),
-			nullptr,						// PACKET_CLIENT_QUIT
-			RECV(PACKET_SERVER_QUIT),
-			RECV(PACKET_SERVER_PLAYER_INFO),
-			nullptr,						// PACKET_CLIENT_MOVE
+			nullptr,						// PACKET_CLIENT_CMD
+			RECV(PACKET_SERVER_UPDATE),
 		};
 
 		bool ConnectToServer(const sf::IpAddress& address, Port port)
@@ -162,6 +139,7 @@ namespace Network
 			_socket.setBlocking(false);
 			_selector.add(_socket);
 
+			// TODO: Send a join request, containing the desired desired player colour 
 			SEND(PACKET_CLIENT_JOIN)();
 
 			return true;
@@ -169,7 +147,7 @@ namespace Network
 
 		void Disconnect()
 		{
-			SEND(PACKET_CLIENT_QUIT)();
+			// TODO: Notify server
 			_selector.remove(_socket);
 			_socket.disconnect();
 		}
@@ -210,14 +188,36 @@ namespace Network
 
 		void RunClient()
 		{
-			using Key = sf::Keyboard::Key;
 			_isRunning = true;
 
-			float dt = 0.016f;
+			sf::RectangleShape rect({ 128.f, 32.f });
+
+			uint32_t commandID = 0;
+
+			uint64_t dt = 0.f;
 			sf::Clock deltaClock;
+
 			// Main loop
 			while (_isRunning)
 			{
+				// Networking
+				if (_selector.wait(sf::milliseconds(WAIT_TIME_MS)))
+				{
+					if (_selector.isReady(_socket))
+					{
+						if (!ReceiveFromServer())
+						{
+							_isRunning = false;
+							break;
+						}
+					}
+				}
+
+				// The RenderWindow is only created when we receive
+				// the PACKET_SERVER_WELCOME packet
+				if (!_window)
+					continue;
+
 				_window->clear();
 
 				// Input
@@ -239,45 +239,79 @@ namespace Network
 				// Movement code
 				if (_window->hasFocus())
 				{
-					float speed = 0.f;
+					Command cmd;
+					cmd.id = commandID++;
+					cmd.dt = dt;
 
+					Command::Direction direction = Command::IDLE;
+
+					if (sf::Keyboard::isKeyPressed(Key::A))
+						direction = Command::LEFT;
 					if (sf::Keyboard::isKeyPressed(Key::D))
-						speed = PADDLE_SPEED;
-					else if (sf::Keyboard::isKeyPressed(Key::A))
-						speed = -PADDLE_SPEED;
+						direction = Command::RIGHT;
 
-					if (speed != 0.f)
+					if (direction != Command::IDLE)
 					{
-						auto delta = Game::MoveEntity(_player, { speed, 0.f }, dt);
-						SEND(PACKET_CLIENT_MOVE)(delta);
-						_deltaHistory[_seqNum++] = delta;
+						cmd.direction = direction;
+						// if client-side prediction
+						{
+							_commands.push_back(cmd);
+
+							_world.RunCommand(cmd, _myID);
+						}
+
+						// Send to server
+						SEND(PACKET_CLIENT_CMD)(cmd);
 					}
 				}
 
-				// Networking
-				if (_selector.wait(sf::milliseconds(WAIT_TIME_MS)))
+				// Interpolation
+				uint64_t renderTime = (_elapsedTime > INTERPOLATION_TIME_MS) ? _elapsedTime - INTERPOLATION_TIME_MS : 0;
+				WorldSnapshot* to = nullptr;
+				WorldSnapshot* from = nullptr;
+				for (auto& snapshot : _snapshots)
 				{
-					if (_selector.isReady(_socket))
+					if (snapshot.clientTime > renderTime)
 					{
-						if (!ReceiveFromServer())
-							_isRunning = false;
+						to = &snapshot;
+						break;
+					}
+					from = &snapshot;
+				}
+
+				if (to && from)
+				{
+					float alpha = (float) (_elapsedTime - from->clientTime) / (float) (to->clientTime - from->clientTime);
+					alpha -= clamp(alpha, 0.f, 1.0f);
+					std::cout << "CLIENT: Alpha: " << alpha << std::endl;
+					//alpha = clamp(alpha, 0.f, 1.f);
+					// Alpha always ~0.9?
+
+					for (auto& playerFrom : from->snapshot.players())
+					{
+						for (auto playerTo : to->snapshot.players())
+						{
+							if (playerFrom.pid() == playerTo.pid() && playerTo.pid() != _myID)
+							{
+								std::cout << "CLIENT: RenderTime: " << renderTime << std::endl;
+
+								auto playerReal = _world.GetPlayer(playerFrom.pid());
+								if (playerReal)
+								{
+									sf::Vector2f newPos = (playerTo.position() - playerFrom.position()) * alpha + playerFrom.position();
+									playerReal->SetPosition(newPos);
+								}
+							}
+						}
 					}
 				}
 
-				// RECODE: Gross
-				if (_player.id != INVALID_CID)
-				{
-					_player.Draw(*_window);
-				}
-
-				if (_opponent.id != INVALID_CID)
-				{
-					_opponent.Interpolate(dt);
-					_opponent.Draw(*_window);
-				}
+				// Render
+				World::RenderWorld(_world, *_window);
 
 				_window->display();
-				dt = deltaClock.restart().asSeconds();
+				dt = deltaClock.restart().asMilliseconds();
+				_elapsedTime += dt;
 			}
 		}
 
@@ -286,20 +320,9 @@ namespace Network
 			if (!ConnectToServer(address, port))
 				return false;
 
-			_window = std::make_unique<sf::RenderWindow>(sf::VideoMode(800, 600), "CMP303");
-			_window->setFramerateLimit(60);
-			_window->requestFocus();
-
-			//_playerSprite.setSize({ 64, 12 });
-			//_playerSprite.setFillColor(sf::Color(0x00AEAEFF));
-
-			//_opponentSprite.setSize({ 64, 12 });
-			//_opponentSprite.setFillColor(sf::Color(0xAE00AEFF));
-
 			RunClient();
 
 			Disconnect();
-
 			return true;
 		}
 	}

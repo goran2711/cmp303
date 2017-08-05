@@ -1,10 +1,9 @@
 ﻿  client.cpp
-c:\users\xps\documents\visual studio 2015\projects\cmp303_v8\cmp303\entity.h(23): warning C4305: 'initializing': truncation from 'int' to 'Network::ClientID'
-c:\users\xps\documents\visual studio 2015\projects\cmp303_v8\cmp303\entity.h(23): warning C4309: 'initializing': truncation of constant value
+client.cpp(162): warning C4244: 'initializing': conversion from 'float' to 'uint64_t', possible loss of data
   Generating code
-  36 of 885 functions ( 4.1%) were compiled, the rest were copied from previous compilation.
+  36 of 901 functions ( 4.0%) were compiled, the rest were copied from previous compilation.
     0 functions were new in current compilation
-    3 functions had inline decision re-evaluated but remain unchanged
+    2 functions had inline decision re-evaluated but remain unchanged
   Finished generating code
   CMP303.vcxproj -> C:\Users\XPS\Documents\Visual Studio 2015\Projects\CMP303_v8\CMP303\x64\Release\CMP303.exe
   CMP303.vcxproj -> C:\Users\XPS\Documents\Visual Studio 2015\Projects\CMP303_v8\CMP303\x64\Release\CMP303.pdb (Full PDB)
