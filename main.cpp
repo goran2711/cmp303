@@ -32,5 +32,9 @@ int main()
 	if (input == 'y' || input == 'd')
 		Server::CloseServer();
 
+	#ifndef _DEBUG
+	std::cin.get();
+	#endif
+
 	return 0;
 }

@@ -4,13 +4,12 @@
 #include "command.h"
 #include "player.h"
 #include "world.h"
-
-#define WAIT_TIME_MS	50
+#include "common.h"
 
 #define DEF_SERVER_RECV(type)		void Receive_ ## type ## (ConnectionPtr connection, sf::Packet& p)
 #define DEF_SERVER_SEND(type)		void Send_ ## type ## (ConnectionPtr connection)
 
-#define DEF_CLIENT_RECV(type)		NetworkReceiveError Receive_ ## type ## (sf::Packet& p)
+#define DEF_CLIENT_RECV(type)		bool Receive_ ## type ## (sf::Packet& p)
 #define DEF_CLIENT_SEND(type)		void Send_ ## type ## ()
 
 #define DEF_SEND_PARAM(type)		void Send_ ## type
@@ -19,6 +18,8 @@
 #define SEND(type)					Send_ ## type
 
 #define INVALID_CID					0xFFFF
+
+#define RECONNECT_TIMEOUT_MS		20000
 
 struct Entity;
 
@@ -30,10 +31,13 @@ namespace Network
 
 	struct Connection
 	{
-		// TODO: Abstract the socket
+		void Send(sf::Packet& p);
+		bool Receive(sf::Packet& p);
 
 		uint8_t pid;
 		bool active = false;
+		bool disconnected = false;
+		time_point timeout;
 		sf::TcpSocket socket;
 	};
 
@@ -43,17 +47,12 @@ namespace Network
 	{
 		PACKET_CLIENT_JOIN,
 		PACKET_SERVER_WELCOME,
+		PACKET_SERVER_SPECTATOR,
 		PACKET_SERVER_FULL,
 		PACKET_CLIENT_CMD,
 		PACKET_SERVER_UPDATE,
+		PACKET_CLIENT_QUIT,
 		PACKET_END,
-	};
-
-	enum NetworkReceiveError
-	{
-		RECEIVE_ERROR_OK,
-		RECEIVE_ERROR_LOST_CONNECTION,
-		RECEIVE_ERROR_OTHER
 	};
 
 	sf::Packet InitPacket(PacketType type);

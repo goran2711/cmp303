@@ -9,11 +9,15 @@ class Player
 public:
 	static constexpr float MOVE_SPEED = 400.f;
 
-	void RunCommand(const Command& cmd);
+	void RunCommand(const Command& cmd, bool rec);
 
 	void SetPID(uint8_t pid) { mPID = pid; }
 	void SetColour(uint32_t RGBA) { mColour = RGBA; }
+
+	void SetX(float x) { mPosition.x = x; }
+	void SetY(float y) { mPosition.y = y; }
 	void SetPosition(const sf::Vector2f& position) { mPosition = position; }
+	
 	void SetLastCommandID(int id) { mLastCommandID = id; }
 
 	uint8_t pid() const { return mPID; }

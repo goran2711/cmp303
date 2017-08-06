@@ -6,7 +6,7 @@
 #include "command.h"
 #include "common.h"
 
-#define INTERPOLATION_TIME_MS	300
+#define INTERPOLATION_TIME_MS	250
 
 namespace Network
 {
@@ -14,12 +14,19 @@ namespace Network
 	{
 		// Networking
 		sf::TcpSocket _socket;
-		sf::SocketSelector _selector;
 		bool _isRunning;
 
 		bool _isPredicting = true;
 		bool _isReconciling = true;
 		bool _isInterpolating = true;
+
+		enum ClientStatus
+		{
+			STATUS_NONE,
+			STATUS_JOINING,
+			STATUS_PLAYING,
+			STATUS_SPECTATING,
+		} _status;
 
 		// Graphics
 		std::unique_ptr<sf::RenderWindow> _window;
@@ -33,9 +40,32 @@ namespace Network
 		std::list<Command> _commands;
 		std::list<WorldSnapshot> _snapshots;
 
+		bool _viewInverted = false;
+
+		void InitializeWindow(const char* title)
+		{
+			_window = std::make_unique<sf::RenderWindow>(sf::VideoMode(VP_WIDTH, VP_HEIGHT), title);
+			_window->setFramerateLimit(30);
+			_window->requestFocus();
+		}
+
 		uint64_t GetRenderTime()
 		{
 			return (_elapsedTime > INTERPOLATION_TIME_MS) ? _elapsedTime - INTERPOLATION_TIME_MS : 0;
+		}
+
+		void DeleteOldSnapshots(uint64_t renderTime)
+		{
+			for (auto it = _snapshots.rbegin(); it != _snapshots.rend(); ++it)
+			{
+				// If this snapshot came before our render time
+				if (it->clientTime <= renderTime)
+				{
+					// Start deleting from this point
+					_snapshots.erase(_snapshots.begin(), (++it).base());
+					break;
+				}
+			}
 		}
 
 		// SEND FUNCTIONS //////////////////////////////////
@@ -47,6 +77,7 @@ namespace Network
 
 			std::cout << "CLIENT: Sent join request to server" << std::endl;
 			_socket.send(p);
+			_status = STATUS_JOINING;
 		}
 
 		DEF_SEND_PARAM(PACKET_CLIENT_CMD)(const Command& cmd)
@@ -57,56 +88,80 @@ namespace Network
 			_socket.send(p);
 		}
 
+		DEF_CLIENT_SEND(PACKET_CLIENT_QUIT)
+		{
+			auto p = InitPacket(PACKET_CLIENT_QUIT);
+
+			_socket.send(p);
+		}
+
 		// RECEIVE FUNCTIONS ///////////////////////////////
+		// If any of the receive functions return false,
+		// the client will disconnect.
 
 		DEF_CLIENT_RECV(PACKET_SERVER_WELCOME)
 		{
-			p >> _myID;
+			float viewRotation;
+			p >> _myID >> viewRotation;
 
 			std::cout << "CLIENT: Server assigned us id #" << (int) _myID << std::endl;
-			_window = std::make_unique<sf::RenderWindow>(sf::VideoMode(800, 600), "CMP303");
-			_window->setFramerateLimit(60);
-			_window->requestFocus();
 
-			return RECEIVE_ERROR_OK;
+			char title[32];
+			sprintf_s(title, "Client #%d", _myID);
+			InitializeWindow(title);
+
+			if (viewRotation != 0.f)
+			{
+				sf::View view = _window->getView();
+				view.setRotation(viewRotation);
+				_window->setView(view);
+
+				_viewInverted = true;
+			}
+
+			_status = STATUS_PLAYING;
+			return true;
+		}
+
+		DEF_CLIENT_RECV(PACKET_SERVER_SPECTATOR)
+		{
+			std::cout << "CLIENT: No more available player slots; we are a spectator" << std::endl;
+
+			InitializeWindow("Spectating");
+
+			_status = STATUS_SPECTATING;
+			return true;
 		}
 
 		DEF_CLIENT_RECV(PACKET_SERVER_FULL)
 		{
 			std::cout << "CLIENT: Could not join server because it is full" << std::endl;
 
-			return RECEIVE_ERROR_OTHER;
+			return false;
 		}
 
 		DEF_CLIENT_RECV(PACKET_SERVER_UPDATE)
 		{
+			// We don't care about state updates
+			// if we are still waiting to learn if
+			// we can join the server
+			if (_status == STATUS_JOINING)
+				return true;
+
 			WorldSnapshot snapshot;
 			p >> snapshot;
 
-			// TODO: Double-check with inspiration for this part: https://github.com/robinarnesson/game-networking/blob/master/client.hpp#L166
-			// Overwrite last snapshot if the clientTime hasn't changed
+			// Overwrite last snapshot if we receive two snapshots in the same frame
 			if (_snapshots.empty() || _snapshots.back().clientTime != _elapsedTime)
 				_snapshots.push_back(snapshot);
 
 			_snapshots.back().clientTime = _elapsedTime;
 
 			// Delete old snapshots
-			// renderTime: The the at which the current interpolation would have started
 			uint64_t renderTime = GetRenderTime();
 
 			// Delete old (irrelevant) snapshots
-			// I.e. snapshots that are older than renderTime
-			for (auto it = _snapshots.begin(); it != _snapshots.end(); ++it)
-			{
-				// First snapshot that is newer than renderTime,
-				// so delete all the ones that came before it
-				// EXCEPT the previous.
-				if (it->clientTime >= renderTime)
-				{
-					_snapshots.erase(_snapshots.begin(), (it == _snapshots.begin() ? it : --it));
-					break;
-				}
-			}
+			DeleteOldSnapshots(renderTime);
 
 			// Update world
 			_world = _snapshots.back().snapshot;
@@ -118,7 +173,7 @@ namespace Network
 				if (me)
 				{
 					// Last commandID on server
-					int lastCommandID = me->lastCommandID();
+					uint32_t lastCommandID = me->lastCommandID();
 
 					// Remove older commands
 					const auto pred = [lastCommandID](const auto& cmd)
@@ -131,20 +186,22 @@ namespace Network
 
 					// Reapply commands the server had not yet processed
 					for (const auto& cmd : _commands)
-						_world.RunCommand(cmd, _myID);
+						_world.RunCommand(cmd, _myID, true);
 				}
 			}
 
-			return RECEIVE_ERROR_OK;
+			return true;
 		}
 
-		using ClientReceiveCallback = std::function<NetworkReceiveError(sf::Packet&)>;
+		using ClientReceiveCallback = std::function<bool(sf::Packet&)>;
 		const ClientReceiveCallback _receivePacket[] = {
 			nullptr,						// PACKET_CLIENT_JOIN
 			RECV(PACKET_SERVER_WELCOME),
+			RECV(PACKET_SERVER_SPECTATOR),
 			RECV(PACKET_SERVER_FULL),
 			nullptr,						// PACKET_CLIENT_CMD
 			RECV(PACKET_SERVER_UPDATE),
+			nullptr,						// PACKET_CLIENT_QUIT
 		};
 
 		bool ConnectToServer(const sf::IpAddress& address, Port port)
@@ -154,7 +211,6 @@ namespace Network
 				return false;
 
 			_socket.setBlocking(false);
-			_selector.add(_socket);
 
 			SEND(PACKET_CLIENT_JOIN)();
 			return true;
@@ -163,7 +219,6 @@ namespace Network
 		void Disconnect()
 		{
 			// TODO: Notify server
-			_selector.remove(_socket);
 			_socket.disconnect();
 		}
 
@@ -190,10 +245,7 @@ namespace Network
 
 				if (type < PACKET_END && _receivePacket[type] != nullptr)
 				{
-					NetworkReceiveError ret = _receivePacket[type](p);
-
-					// Unrecoverable error, quit.
-					if (ret != RECEIVE_ERROR_OK)
+					if (!_receivePacket[type](p))
 						return false;
 				}
 			}
@@ -203,14 +255,8 @@ namespace Network
 
 		bool WaitForSelector()
 		{
-			if (!_selector.wait(sf::milliseconds(WAIT_TIME_MS)))
-				return true;
-
-			if (_selector.isReady(_socket))
-			{
-				if (!ReceiveFromServer())
-					return false;
-			}
+			if (!ReceiveFromServer())
+				return false;
 
 			return true;
 		}
@@ -262,7 +308,7 @@ namespace Network
 			return true;
 		}
 
-		void BuildCommand(float dt)
+		void BuildCommand(uint64_t dt)
 		{
 			static uint32_t commandID = 0;
 
@@ -275,9 +321,9 @@ namespace Network
 				Command::Direction direction = Command::IDLE;
 
 				if (sf::Keyboard::isKeyPressed(Key::A))
-					direction = Command::LEFT;
+					direction = (_viewInverted) ? Command::RIGHT : Command::LEFT;
 				if (sf::Keyboard::isKeyPressed(Key::D))
-					direction = Command::RIGHT;
+					direction = (_viewInverted) ? Command::LEFT : Command::RIGHT;
 
 				if (direction != Command::IDLE)
 				{
@@ -288,7 +334,7 @@ namespace Network
 					{
 						_commands.push_back(cmd);
 
-						_world.RunCommand(cmd, _myID);
+						_world.RunCommand(cmd, _myID, false);
 					}
 
 					// Send to server
@@ -324,14 +370,14 @@ namespace Network
 				for (const auto& playerTo : to.snapshot.GetPlayers())
 				{
 					// Only interpolate if this is the same player in both snapshots, and it is not us
-					if (playerFrom.pid() != playerTo.pid() || playerTo.pid() == _myID)
-						continue;
-
-					auto playerReal = _world.GetPlayer(playerFrom.pid());
-					if (playerReal)
+					if (playerFrom.pid() == playerTo.pid() && playerFrom.pid() != _myID)
 					{
-						sf::Vector2f newPos = (playerTo.position() - playerFrom.position()) * alpha + playerFrom.position();
-						playerReal->SetPosition(newPos);
+						auto playerReal = _world.GetPlayer(playerFrom.pid());
+						if (playerReal)
+						{
+							sf::Vector2f newPos = (playerTo.position() - playerFrom.position()) * alpha + playerFrom.position();
+							playerReal->SetPosition(newPos);
+						}
 					}
 				}
 			}
@@ -341,7 +387,7 @@ namespace Network
 		{
 			_isRunning = true;
 
-			uint64_t dt = 0.f;
+			uint64_t dt = 0;
 			sf::Clock deltaClock;
 
 			// Main loop
@@ -351,18 +397,18 @@ namespace Network
 				if (!WaitForSelector())
 					break;
 
-				// The RenderWindow is only created when we receive
-				// the PACKET_SERVER_WELCOME packet
-				if (!_window)
-					continue;
-
-				_window->clear();
-
-				// Input
-				if (!HandleEvents())
-					break;
-
-				BuildCommand(dt);
+				switch (_status)
+				{
+					case STATUS_JOINING:
+						continue;
+					case STATUS_PLAYING:
+						// Movement input
+						BuildCommand(dt);
+					case STATUS_SPECTATING:
+						// Debug and 'meta' input
+						if (!HandleEvents())
+							_isRunning = false;
+				}
 
 				// Interpolation
 				if (_isInterpolating)
@@ -380,9 +426,11 @@ namespace Network
 				}
 
 				// Render
+				_window->clear();
 				World::RenderWorld(_world, *_window);
-
 				_window->display();
+
+				// Timing
 				dt = deltaClock.restart().asMilliseconds();
 				_elapsedTime += dt;
 			}
@@ -394,7 +442,10 @@ namespace Network
 		bool StartClient(const sf::IpAddress& address, Port port)
 		{
 			if (!ConnectToServer(address, port))
+			{
+				std::cerr << "CLIENT: Failed to connect to server" << std::endl;
 				return false;
+			}
 
 			ClientLoop();
 

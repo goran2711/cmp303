@@ -3,8 +3,6 @@
 #include <atomic>
 #include <condition_variable>
 
-#define MAX_CLIENTS		2
-
 namespace Network
 {
 	namespace Server

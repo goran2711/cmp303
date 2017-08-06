@@ -6,14 +6,16 @@
 class World
 {
 public:
+	constexpr static int MAX_PLAYERS = 2;
 	static void RenderWorld(const World& world, sf::RenderWindow& window);
 
 	bool AddPlayer(Player& player);
-	void RunCommand(const Command& cmd, uint8_t pid);
+	void RunCommand(const Command& cmd, uint8_t pid, bool rec);
 
 	bool RemovePlayer(uint8_t pid);
 
 	Player* GetPlayer(uint8_t pid);
+	bool PlayerExists(uint8_t pid);
 
 	std::vector<Player>& GetPlayers() { return mPlayers; }
 	const std::vector<Player>& GetPlayers() const { return mPlayers; }

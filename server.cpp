@@ -11,7 +11,13 @@ namespace Network
 {
 	namespace Server
 	{
-		constexpr int UPDATE_INTERVAL_MS = 100;
+		constexpr int MAX_CLIENTS = 12;
+		
+		// Time to wait at socket selector
+		constexpr int WAIT_TIME_MS = 10;
+
+		// State update interval
+		constexpr int UPDATE_INTERVAL_MS = 50;
 
 		// Threads
 		std::thread _serverThread;
@@ -21,10 +27,9 @@ namespace Network
 		// Networking
 		sf::TcpListener _listener;
 		sf::SocketSelector _selector;
+		std::vector<ConnectionPtr> _connections;
 
 		time_point _nextUpdatePoint;
-
-		std::vector<ConnectionPtr> _connections;
 
 		// Game
 		World _world;
@@ -36,10 +41,17 @@ namespace Network
 
 		DEF_SERVER_SEND(PACKET_SERVER_WELCOME)
 		{
+			float rot = (_connections.size() > 1) ? 180.f : 0.f;
 			auto p = InitPacket(PACKET_SERVER_WELCOME);
-			p << connection->pid;
+			p << connection->pid << rot;
 
-			connection->socket.send(p);
+			connection->Send(p);
+		}
+
+		DEF_SERVER_SEND(PACKET_SERVER_SPECTATOR)
+		{
+			auto p = InitPacket(PACKET_SERVER_SPECTATOR);
+			connection->Send(p);
 		}
 
 		DEF_SERVER_SEND(PACKET_SERVER_FULL)
@@ -47,7 +59,7 @@ namespace Network
 			auto p = InitPacket(PACKET_SERVER_FULL);
 
 			std::cout << "SERVER: A client tried to join, but we are full" << std::endl;
-			connection->socket.send(p);
+			connection->Send(p);
 		}
 
 		DEF_SEND_PARAM(PACKET_SERVER_UPDATE)(ConnectionPtr connection, const WorldSnapshot& snapshot)
@@ -55,7 +67,7 @@ namespace Network
 			auto p = InitPacket(PACKET_SERVER_UPDATE);
 			p << snapshot;
 
-			connection->socket.send(p);
+			connection->Send(p);
 		}
 
 		// RECEIVE FUNCTIONS ///////////////////////////////
@@ -66,11 +78,7 @@ namespace Network
 			p >> colour;
 
 			Player player;
-
-			if (!_world.GetPlayers().empty())
-				player.SetColour(0xA0A0FFFF);
-			else
-				player.SetColour(colour);
+			player.SetColour(colour);
 
 			if (_world.AddPlayer(player))
 			{
@@ -79,6 +87,11 @@ namespace Network
 
 				std::cout << "SERVER: Sent client #" << (int) player.pid() << " welcome packet" << std::endl;
 				SEND(PACKET_SERVER_WELCOME)(connection);
+			}
+			else if (_connections.size() < MAX_CLIENTS)
+			{
+				std::cout << "SERVER: Reached MAX_PLAYERS, new spectator joined" << std::endl;
+				SEND(PACKET_SERVER_SPECTATOR)(connection);
 			}
 			else
 			{
@@ -93,16 +106,24 @@ namespace Network
 			Command cmd;
 			p >> pid >> cmd;
 
-			_world.RunCommand(cmd, pid);
+			_world.RunCommand(cmd, pid, false);
+		}
+
+		DEF_SERVER_RECV(PACKET_CLIENT_QUIT)
+		{
+			std::cout << "SERVER: Client #" << (int) connection->pid << " has quit" << std::endl;
+			connection->active = false;
 		}
 
 		using ServerReceiveCallback = std::function<void(ConnectionPtr, sf::Packet&)>;
 		const ServerReceiveCallback _receivePacket[] = {
 				RECV(PACKET_CLIENT_JOIN),
 				nullptr,					// PACKET_SERVER_WELCOME
+				nullptr,					// PACKET_SERVER_SPECTATOR
 				nullptr,					// PACKET_SERVER_FULL
 				RECV(PACKET_CLIENT_CMD),
 				nullptr,					// PACKET_SERVER_UPDATE
+				RECV(PACKET_CLIENT_QUIT),
 		};
 
 		bool StartListening(const sf::IpAddress& address, Port port)
@@ -129,7 +150,7 @@ namespace Network
 				return;
 			}
 
-			std::cout << "SERVER: Accepted a new client" << std::endl;
+			std::cout << "SERVER: Accepted a new client -- " << _connections.size() << " clients connected" << std::endl;
 
 			newConnection->active = true;
 			newConnection->socket.setBlocking(false);
@@ -138,10 +159,13 @@ namespace Network
 
 		std::vector<ConnectionPtr>::iterator DropClient(ConnectionPtr connection)
 		{
-			std::cout << "SERVER: Dropping client " << (int) connection->pid << std::endl;
+			std::cout << "SERVER: Dropping client " << (int) connection->pid << " -- " << _connections.size() - 1 << " clients connected" << std::endl;
 
 			_selector.remove(connection->socket);
-			_world.RemovePlayer(connection->pid);
+
+			if (_world.PlayerExists(connection->pid))
+				_world.RemovePlayer(connection->pid);
+
 			connection->socket.disconnect();
 
 			return _connections.erase(std::remove(_connections.begin(), _connections.end(), connection), _connections.end());
@@ -152,20 +176,8 @@ namespace Network
 			while (true)
 			{
 				sf::Packet p;
-				auto ret = connection->socket.receive(p);
-
-				switch (ret)
-				{
-					case Status::Disconnected:
-						connection->active = false;
-						return;
-					case Status::Partial:
-						std::cerr << "SERVER: Partial receive" << std::endl;
-						connection->active = false;
-						return;
-					case Status::NotReady:
-						return;
-				}
+				if (!connection->Receive(p))
+					break;
 
 				uint8_t type;
 				p >> type;

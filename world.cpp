@@ -1,4 +1,5 @@
 #include "world.h"
+#include "common.h"
 #include <algorithm>
 
 #define INVALID_ID	0
@@ -11,7 +12,8 @@
 
 /* static */ void World::RenderWorld(const World & world, sf::RenderWindow & window)
 {
-	sf::RectangleShape shape({ 128.f, 16.f });
+	sf::RectangleShape shape({ PADDLE_W, PADDLE_H });
+	shape.setOrigin({ H_PADDLE_W, H_PADDLE_H });
 
 	for (const auto& player : world.mPlayers)
 	{
@@ -23,7 +25,7 @@
 
 bool World::AddPlayer(Player& player)
 {
-	if (mPlayers.size() >= 2)
+	if (mPlayers.size() >= MAX_PLAYERS)
 		return false;
 
 	uint8_t newPID = GeneratePlayerID();
@@ -40,30 +42,27 @@ bool World::AddPlayer(Player& player)
 	return true;
 }
 
-void World::RunCommand(const Command& cmd, uint8_t pid)
+void World::RunCommand(const Command& cmd, uint8_t pid, bool rec)
 {
 	Player* player = GetPlayer(pid);
 
 	if (player)
-		player->RunCommand(cmd);
+	{
+		player->RunCommand(cmd, rec);
+
+		if (player->position().x - H_PADDLE_W < 0.f)
+			player->SetX(H_PADDLE_W);
+		if (player->position().x + H_PADDLE_W > VP_WIDTH_F)
+			player->SetX(VP_WIDTH_F - H_PADDLE_W);
+	}
 }
 
 bool World::RemovePlayer(uint8_t pid)
 {
-	//auto hasPID = [pid](const auto& player) { return player.pid() == pid; };
+	auto hasPID = [pid](const auto& player) { return player.pid() == pid; };
 
-	//auto it = mPlayers.erase(std::remove_if(mPlayers.begin(), mPlayers.end(), hasPID));
-	//return it != mPlayers.end();
-
-	for (auto it = mPlayers.begin(); it != mPlayers.end(); ++it)
-	{
-		if (it->pid() == pid)
-		{
-			mPlayers.erase(it);
-			return true;
-		}
-	}
-	return false;
+	auto it = mPlayers.erase(std::remove_if(mPlayers.begin(), mPlayers.end(), hasPID));
+	return it != mPlayers.end();
 }
 
 Player* World::GetPlayer(uint8_t pid)
@@ -75,6 +74,11 @@ Player* World::GetPlayer(uint8_t pid)
 	}
 
 	return nullptr;
+}
+
+bool World::PlayerExists(uint8_t pid)
+{
+	return GetPlayer(pid) != nullptr;
 }
 
 uint8_t World::GeneratePlayerID()
