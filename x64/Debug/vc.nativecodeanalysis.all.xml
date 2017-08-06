@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8"?><DEFECTS><DEFECT>
+    <SFA>
+      <FILEPATH>c:\users\xps\documents\visual studio 2015\projects\cmp303_v8\cmp303\</FILEPATH>
+      <FILENAME>client.cpp</FILENAME>
+      <LINE>110</LINE>
+      <COLUMN>12</COLUMN>
+    </SFA>
+    <DEFECTCODE>6340</DEFECTCODE>
+    <DESCRIPTION>Mismatch on sign: 'unsigned char' passed as _Param_(3) when some signed type is required in call to 'sprintf_s'.</DESCRIPTION>
+    <FUNCTION>Network::Client::Receive_PACKET_SERVER_WELCOME</FUNCTION>
+    <DECORATED>?Receive_PACKET_SERVER_WELCOME@Client@Network@@YA_NAEAVPacket@sf@@@Z</DECORATED>
+    <FUNCLINE>102</FUNCLINE>
+    <PATH></PATH>
+  </DEFECT></DEFECTS>

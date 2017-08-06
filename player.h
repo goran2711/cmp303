@@ -2,11 +2,19 @@
 #include <SFML/System.hpp>
 #include <cstdint>
 
+namespace sf
+{
+	class Packet;
+}
+
 struct Command;
 
 class Player
 {
 public:
+	friend sf::Packet& operator<<(sf::Packet& p, const Player& player);
+	friend sf::Packet& operator>>(sf::Packet& p, Player& player);
+
 	static constexpr float MOVE_SPEED = 400.f;
 
 	void RunCommand(const Command& cmd, bool rec);
@@ -20,10 +28,10 @@ public:
 	
 	void SetLastCommandID(int id) { mLastCommandID = id; }
 
-	uint8_t pid() const { return mPID; }
-	uint32_t colour() const { return mColour; }
-	int lastCommandID() const { return mLastCommandID; }
-	sf::Vector2f position() const { return mPosition; }
+	uint8_t GetID() const { return mPID; }
+	uint32_t GetColour() const { return mColour; }
+	int GetLastCommandID() const { return mLastCommandID; }
+	sf::Vector2f GetPosition() const { return mPosition; }
 
 private:
 	uint8_t mPID;
@@ -31,3 +39,6 @@ private:
 	int mLastCommandID;
 	sf::Vector2f mPosition;
 };
+
+sf::Packet& operator<<(sf::Packet& p, const Player& player);
+sf::Packet& operator>>(sf::Packet& p, Player& player);

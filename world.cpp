@@ -1,14 +1,8 @@
 #include "world.h"
 #include "common.h"
+#include "network.h"
+#include "debug.h"
 #include <algorithm>
-
-#define INVALID_ID	0
-#define FIRST_ID	1
-
-/* static */ const sf::Vector2f World::SPAWN_POSITIONS[2] = {
-		{ 400.f, 32.f  },
-		{ 400.f, 568.f }
-};
 
 /* static */ void World::RenderWorld(const World & world, sf::RenderWindow & window)
 {
@@ -17,8 +11,18 @@
 
 	for (const auto& player : world.mPlayers)
 	{
-		shape.setFillColor(sf::Color(player.colour()));
-		shape.setPosition(player.position());
+		shape.setFillColor(sf::Color(player.GetColour()));
+		shape.setPosition(player.GetPosition());
+		window.draw(shape);
+	}
+
+	// TEMP: Bullet size
+	shape.setSize({ BULLET_W, BULLET_H });
+	shape.setOrigin({ H_BULLET_W, H_BULLET_H });
+	for (const auto& bullet : world.mBullets)
+	{
+		shape.setFillColor(sf::Color(bullet.GetColour()));
+		shape.setPosition(bullet.GetPosition());
 		window.draw(shape);
 	}
 }
@@ -37,51 +41,144 @@ bool World::AddPlayer(Player& player)
 
 	mPlayers.push_back(player);
 
-	mPlayers.back().SetPosition(SPAWN_POSITIONS[mPlayers.size() % 2]);
+	float lane = LANE_TOP;
+	if (IsLaneOccupied(lane))
+		lane = LANE_BOTTOM;
+
+	mPlayers.back().SetPosition({ SPAWN_POS, lane });
 
 	return true;
 }
 
-void World::RunCommand(const Command& cmd, uint8_t pid, bool rec)
+bool World::RemovePlayer(uint8_t id)
 {
-	Player* player = GetPlayer(pid);
+	auto hasPID = [id](const auto& player) { return player.GetID() == id; };
+
+	auto it = mPlayers.erase(std::remove_if(mPlayers.begin(), mPlayers.end(), hasPID));
+	debug << "mPlayers.size() == " << mPlayers.size() << std::endl;
+	return it != mPlayers.end();
+}
+
+void World::RunCommand(const Command& cmd, uint8_t id, bool rec)
+{
+	Player* player = GetPlayer(id);
 
 	if (player)
 	{
 		player->RunCommand(cmd, rec);
 
-		if (player->position().x - H_PADDLE_W < 0.f)
+		if (player->GetPosition().x - H_PADDLE_W < 0.f)
 			player->SetX(H_PADDLE_W);
-		if (player->position().x + H_PADDLE_W > VP_WIDTH_F)
-			player->SetX(VP_WIDTH_F - H_PADDLE_W);
+		if (player->GetPosition().x + H_PADDLE_W > VP_WIDTH)
+			player->SetX(VP_WIDTH - H_PADDLE_W);
 	}
 }
 
-bool World::RemovePlayer(uint8_t pid)
+void World::PlayerShoot(uint8_t id)
 {
-	auto hasPID = [pid](const auto& player) { return player.pid() == pid; };
+	Player* player = GetPlayer(id);
+	if (!player)
+		return;
 
-	auto it = mPlayers.erase(std::remove_if(mPlayers.begin(), mPlayers.end(), hasPID));
-	return it != mPlayers.end();
+	Bullet newBullet;
+	newBullet.SetID(mNewEID++);
+	newBullet.SetColour(player->GetColour());
+	newBullet.SetPosition(player->GetPosition());
+
+	// If this player is on top, fire down and vice versa
+	float direction = IsPlayerTopLane(id) ? 1.f : -1.f;
+	newBullet.SetDirection({ 0.f, direction });
+
+	mBullets.push_back(newBullet);
 }
 
-Player* World::GetPlayer(uint8_t pid)
+void World::Update(float dt)
+{
+	for (auto it = mBullets.begin(); it != mBullets.end(); )
+	{
+		Bullet& bullet = *it;
+
+		bullet.Update(dt);
+
+		if (bullet.GetPosition().y + H_BULLET_H < 0.f)
+			it = mBullets.erase(it);
+		else if (bullet.GetPosition().y - H_BULLET_H >= VP_HEIGHT)
+			it = mBullets.erase(it);
+		else
+			++it;
+	}
+}
+
+Bullet* World::GetBullet(uint32_t id)
+{
+	for (auto& bullet : mBullets)
+		if (bullet.GetID() == id)
+			return &bullet;
+
+	return nullptr;
+}
+
+bool World::IsPlayerTopLane(uint8_t id)
+{
+	Player* player = GetPlayer(id);
+	if (!player)
+		return false;
+
+	return player->GetPosition().y == LANE_TOP;
+}
+
+Player* World::GetPlayer(uint8_t id)
 {
 	for (auto& player : mPlayers)
 	{
-		if (player.pid() == pid)
+		if (player.GetID() == id)
 			return &player;
 	}
 
 	return nullptr;
 }
 
-bool World::PlayerExists(uint8_t pid)
+bool World::PlayerExists(uint8_t id)
 {
-	return GetPlayer(pid) != nullptr;
+	return GetPlayer(id) != nullptr;
 }
 
 uint8_t World::GeneratePlayerID()
 {
-	return mNewID++;
+	return mNewPID++;
+}
+
+bool World::IsLaneOccupied(int lane) const
+{
+	for (const auto& player : mPlayers)
+		if (player.GetPosition().y == lane)
+			return true;
+
+	return false;
+}
+
+sf::Packet& operator<<(sf::Packet& p, const World& world)
+{
+	p << world.mPlayers << world.mBullets;
+
+	return p;
+}
+
+sf::Packet& operator >> (sf::Packet& p, World& world)
+{
+	p >> world.mPlayers >> world.mBullets;
+
+	return p;
+}
+
+sf::Packet& operator<<(sf::Packet& p, const WorldSnapshot& snapshot)
+{
+	p << snapshot.snapshot << snapshot.serverTime << snapshot.clientTime;
+	return p;
+}
+
+sf::Packet& operator >> (sf::Packet& p, WorldSnapshot& snapshot)
+{
+	p >> snapshot.snapshot >> snapshot.serverTime << snapshot.clientTime;
+	return p;
 }

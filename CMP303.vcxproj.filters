@@ -4,6 +4,12 @@
     <Filter Include="Networking">
       <UniqueIdentifier>{ba1abb16-9dcc-4e5f-9a39-b79e348a64e4}</UniqueIdentifier>
     </Filter>
+    <Filter Include="LockFreeStream">
+      <UniqueIdentifier>{2aff8616-09e7-4537-bbd9-02c07e8780b6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Game">
+      <UniqueIdentifier>{a89d0874-3680-4f8f-9718-b721df8cc193}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="server.h">
@@ -16,9 +22,25 @@
       <Filter>Networking</Filter>
     </ClInclude>
     <ClInclude Include="common.h" />
-    <ClInclude Include="player.h" />
-    <ClInclude Include="command.h" />
-    <ClInclude Include="world.h" />
+    <ClInclude Include="debug.h" />
+    <ClInclude Include="locked_ostream.h">
+      <Filter>LockFreeStream</Filter>
+    </ClInclude>
+    <ClInclude Include="synchronized_ostream.h">
+      <Filter>LockFreeStream</Filter>
+    </ClInclude>
+    <ClInclude Include="command.h">
+      <Filter>Game</Filter>
+    </ClInclude>
+    <ClInclude Include="player.h">
+      <Filter>Game</Filter>
+    </ClInclude>
+    <ClInclude Include="world.h">
+      <Filter>Game</Filter>
+    </ClInclude>
+    <ClInclude Include="bullet.h">
+      <Filter>Game</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="network.cpp">
@@ -33,7 +55,18 @@
     </ClCompile>
     <ClCompile Include="common.cpp" />
     <ClCompile Include="old_interpolation_code.txt" />
-    <ClCompile Include="player.cpp" />
-    <ClCompile Include="world.cpp" />
+    <ClCompile Include="debug.cpp" />
+    <ClCompile Include="command.cpp">
+      <Filter>Game</Filter>
+    </ClCompile>
+    <ClCompile Include="world.cpp">
+      <Filter>Game</Filter>
+    </ClCompile>
+    <ClCompile Include="player.cpp">
+      <Filter>Game</Filter>
+    </ClCompile>
+    <ClCompile Include="bullet.cpp">
+      <Filter>Game</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

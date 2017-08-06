@@ -19,8 +19,11 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="bullet.cpp" />
     <ClCompile Include="client.cpp" />
+    <ClCompile Include="command.cpp" />
     <ClCompile Include="common.cpp" />
+    <ClCompile Include="debug.cpp" />
     <ClCompile Include="old_interpolation_code.txt" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="network.cpp" />
@@ -29,12 +32,16 @@
     <ClCompile Include="world.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="bullet.h" />
     <ClInclude Include="client.h" />
     <ClInclude Include="command.h" />
     <ClInclude Include="common.h" />
+    <ClInclude Include="debug.h" />
+    <ClInclude Include="locked_ostream.h" />
     <ClInclude Include="network.h" />
     <ClInclude Include="player.h" />
     <ClInclude Include="server.h" />
+    <ClInclude Include="synchronized_ostream.h" />
     <ClInclude Include="world.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

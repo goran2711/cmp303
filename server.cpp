@@ -1,47 +1,46 @@
 #include "server.h"
 #include <thread>
-#include <atomic>
-#include <iostream>
 #include <functional>
 #include "common.h"
 #include "world.h"
 #include "command.h"
+#include "debug.h"
 
 namespace Network
 {
 	namespace Server
 	{
 		constexpr int MAX_CLIENTS = 12;
-		
+
 		// Time to wait at socket selector
 		constexpr int WAIT_TIME_MS = 10;
 
 		// State update interval
 		constexpr int UPDATE_INTERVAL_MS = 50;
 
-		// Threads
-		std::thread _serverThread;
-		std::atomic<bool> _isServerRunning;
-		std::condition_variable _condServerClosed;
+		// Thread stuff
+		std::thread gServerThread;
+		std::atomic<bool> gIsServerRunning;
+		std::condition_variable gCondServerClosed;
 
 		// Networking
-		sf::TcpListener _listener;
-		sf::SocketSelector _selector;
-		std::vector<ConnectionPtr> _connections;
+		sf::TcpListener gListener;
+		sf::SocketSelector gSelector;
+		std::vector<ConnectionPtr> gConnections;
 
-		time_point _nextUpdatePoint;
+		time_point gNextUpdatePoint;
 
 		// Game
-		World _world;
-		uint64_t _elapsedTime;
-
-		std::vector<ConnectionPtr>::iterator DropClient(ConnectionPtr connection);
+		World gWorld;
+		uint64_t gElapsedTime;
 
 		// SEND FUNCTIONS //////////////////////////////////
 
 		DEF_SERVER_SEND(PACKET_SERVER_WELCOME)
 		{
-			float rot = (_connections.size() > 1) ? 180.f : 0.f;
+			// Rotate the client's view 180 degrees if it is playing on the top lane
+			float rot = (gWorld.IsPlayerTopLane(connection->pid)) ? 180.f : 0.f;
+
 			auto p = InitPacket(PACKET_SERVER_WELCOME);
 			p << connection->pid << rot;
 
@@ -58,7 +57,7 @@ namespace Network
 		{
 			auto p = InitPacket(PACKET_SERVER_FULL);
 
-			std::cout << "SERVER: A client tried to join, but we are full" << std::endl;
+			debug << "SERVER: A client tried to join, but we are full" << std::endl;
 			connection->Send(p);
 		}
 
@@ -80,17 +79,17 @@ namespace Network
 			Player player;
 			player.SetColour(colour);
 
-			if (_world.AddPlayer(player))
+			if (gWorld.AddPlayer(player))
 			{
 				// There is room for this client
-				connection->pid = player.pid();
+				connection->pid = player.GetID();
 
-				std::cout << "SERVER: Sent client #" << (int) player.pid() << " welcome packet" << std::endl;
+				debug << "SERVER: Sent client #" << (int) player.GetID() << " welcome packet" << std::endl;
 				SEND(PACKET_SERVER_WELCOME)(connection);
 			}
-			else if (_connections.size() < MAX_CLIENTS)
+			else if (gConnections.size() < MAX_CLIENTS)
 			{
-				std::cout << "SERVER: Reached MAX_PLAYERS, new spectator joined" << std::endl;
+				debug << "SERVER: Reached MAX_PLAYERS, new spectator joined" << std::endl;
 				SEND(PACKET_SERVER_SPECTATOR)(connection);
 			}
 			else
@@ -106,13 +105,12 @@ namespace Network
 			Command cmd;
 			p >> pid >> cmd;
 
-			_world.RunCommand(cmd, pid, false);
+			gWorld.RunCommand(cmd, pid, false);
 		}
 
-		DEF_SERVER_RECV(PACKET_CLIENT_QUIT)
+		DEF_SERVER_RECV(PACKET_CLIENT_SHOOT)
 		{
-			std::cout << "SERVER: Client #" << (int) connection->pid << " has quit" << std::endl;
-			connection->active = false;
+			gWorld.PlayerShoot(connection->pid);
 		}
 
 		using ServerReceiveCallback = std::function<void(ConnectionPtr, sf::Packet&)>;
@@ -123,52 +121,52 @@ namespace Network
 				nullptr,					// PACKET_SERVER_FULL
 				RECV(PACKET_CLIENT_CMD),
 				nullptr,					// PACKET_SERVER_UPDATE
-				RECV(PACKET_CLIENT_QUIT),
+				RECV(PACKET_CLIENT_SHOOT),	
 		};
 
 		bool StartListening(const sf::IpAddress& address, Port port)
 		{
-			if (_listener.listen(port, address) != Status::Done)
+			if (gListener.listen(port, address) != Status::Done)
 				return false;
 
-			std::cout << "SERVER: Started listening on " << address.toString() << ':' << port << std::endl;
-			_listener.setBlocking(false);
-			_selector.add(_listener);
+			debug << "SERVER: Started listening on " << address.toString() << ':' << port << std::endl;
+			gListener.setBlocking(false);
+			gSelector.add(gListener);
 			return true;
 		}
 
 		void AcceptClients()
 		{
-			_connections.emplace_back(std::make_shared<Connection>());
-			ConnectionPtr newConnection = _connections.back();
+			gConnections.emplace_back(std::make_shared<Connection>());
+			ConnectionPtr newConnection = gConnections.back();
 
-			auto ret = _listener.accept(newConnection->socket);
+			auto ret = gListener.accept(newConnection->socket);
 
 			if (ret != Status::Done)
 			{
-				std::cout << "SERVER: There was a failed/ignored connection" << std::endl;
+				debug << "SERVER: There was a failed connection" << std::endl;
 				return;
 			}
 
-			std::cout << "SERVER: Accepted a new client -- " << _connections.size() << " clients connected" << std::endl;
+			debug << "SERVER: Accepted a new client -- " << gConnections.size() << " clients connected" << std::endl;
 
 			newConnection->active = true;
 			newConnection->socket.setBlocking(false);
-			_selector.add(newConnection->socket);
+			gSelector.add(newConnection->socket);
 		}
 
-		std::vector<ConnectionPtr>::iterator DropClient(ConnectionPtr connection)
+		auto DropConnection(ConnectionPtr connection)
 		{
-			std::cout << "SERVER: Dropping client " << (int) connection->pid << " -- " << _connections.size() - 1 << " clients connected" << std::endl;
+			debug << "SERVER: Dropping client " << (int) connection->pid << " -- " << gConnections.size() - 1 << " clients connected" << std::endl;
 
-			_selector.remove(connection->socket);
+			gSelector.remove(connection->socket);
 
-			if (_world.PlayerExists(connection->pid))
-				_world.RemovePlayer(connection->pid);
+			if (gWorld.PlayerExists(connection->pid))
+				gWorld.RemovePlayer(connection->pid);
 
 			connection->socket.disconnect();
 
-			return _connections.erase(std::remove(_connections.begin(), _connections.end(), connection), _connections.end());
+			return gConnections.erase(std::remove(gConnections.begin(), gConnections.end(), connection), gConnections.end());
 		}
 
 		void Receive(ConnectionPtr connection)
@@ -189,72 +187,80 @@ namespace Network
 			}
 		}
 
+		void ReceiveFromClients()
+		{
+			if (gSelector.wait(sf::milliseconds(WAIT_TIME_MS)))
+			{
+				if (gSelector.isReady(gListener))
+					AcceptClients();
+
+				for (auto it = gConnections.begin(); it != gConnections.end(); )
+				{
+					ConnectionPtr connection = *it;
+
+					if (gSelector.isReady(connection->socket))
+					{
+						if (connection->active)
+							Receive(connection);
+						else
+						{
+							it = DropConnection(connection);
+							continue;
+						}
+					}
+
+					++it;
+				}
+			}
+		}
+
 		void ServerTask(const sf::IpAddress& address, Port port)
 		{
-			std::cout << "SERVER: Started on thread " << std::this_thread::get_id() << std::endl;
-
 			if (!StartListening(address, port))
 				return;
 
-			while (_isServerRunning)
+			float dt = 0.f;
+			sf::Clock deltaClock;
+			while (gIsServerRunning)
 			{
-				if (_selector.wait(sf::milliseconds(WAIT_TIME_MS)))
-				{
-					if (_selector.isReady(_listener))
-						AcceptClients();
+				ReceiveFromClients();
 
-					for (auto it = _connections.begin(); it != _connections.end(); )
-					{
-						ConnectionPtr connection = *it;
-
-						if (_selector.isReady(connection->socket))
-						{
-							if (connection->active)
-								Receive(connection);
-							else
-							{
-								it = DropClient(connection);
-								continue;
-							}
-						}
-
-						++it;
-					}
-				}
+				gWorld.Update(dt);
 
 				// STATE UPDATE
-				if (now() >= _nextUpdatePoint)
+				if (the_clock::now() >= gNextUpdatePoint)
 				{
 					WorldSnapshot snapshot;
-					snapshot.snapshot = _world;
-					snapshot.serverTime = _elapsedTime;
+					snapshot.snapshot = gWorld;
+					snapshot.serverTime = gElapsedTime;
 
-					for (auto& connection : _connections)
+					for (auto& connection : gConnections)
 						SEND(PACKET_SERVER_UPDATE)(connection, snapshot);
 
-					_elapsedTime += UPDATE_INTERVAL_MS;
-					_nextUpdatePoint = now() + ms(UPDATE_INTERVAL_MS);
+					gElapsedTime += UPDATE_INTERVAL_MS;
+					gNextUpdatePoint = the_clock::now() + ms(UPDATE_INTERVAL_MS);
 				}
+				dt = deltaClock.restart().asSeconds();
 			}
 
-			_isServerRunning = false;
-			_condServerClosed.notify_all();
+			gIsServerRunning = false;
+			gCondServerClosed.notify_all();
 		}
 
 		bool StartServer(const sf::IpAddress& address, Port port)
 		{
-			_isServerRunning = true;
-			_nextUpdatePoint = now() + ms(UPDATE_INTERVAL_MS);
-			_serverThread = std::thread([&] { ServerTask(address, port); });
+			gIsServerRunning = true;
+			gNextUpdatePoint = the_clock::now() + ms(UPDATE_INTERVAL_MS);
+			gServerThread = std::thread([&] { ServerTask(address, port); });
 
 			return true;
 		}
 
 		void CloseServer()
 		{
-			std::cout << "SERVER: Closing server" << std::endl;
-			_isServerRunning = false;
-			_serverThread.join();
+			debug << "SERVER: Closing server" << std::endl;
+			gIsServerRunning = false;
+			gServerThread.join();
 		}
 	}
 }

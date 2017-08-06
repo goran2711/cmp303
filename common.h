@@ -1,24 +1,24 @@
 #pragma once
-#include <list>
-#include <memory>
-#include <algorithm>
 #include <chrono>
 #include <SFML/Window.hpp>
 
-#define VP_WIDTH	800
-#define VP_HEIGHT	600
+constexpr unsigned int VP_WIDTH = 800;
+constexpr unsigned int VP_HEIGHT = 600;
 
-#define VP_WIDTH_F	800.f
-#define VP_HEIGHT_F	600.f
+constexpr float H_VP_WIDTH = VP_WIDTH * 0.5f;
+constexpr float H_VP_HEIGHT = VP_HEIGHT * 0.5f;
 
-#define H_VP_WIDTH	VP_WIDTH * 0.5f
-#define H_VP_HEIGHT	VP_HEIGHT * 0.5f
+constexpr float PADDLE_W = 128.f;
+constexpr float PADDLE_H = 16.f;
 
-#define PADDLE_W	128.f
-#define PADDLE_H	16.f
+constexpr float H_PADDLE_W = PADDLE_W * 0.5f;
+constexpr float H_PADDLE_H = PADDLE_H * 0.5f;
 
-#define H_PADDLE_W	PADDLE_W * 0.5f
-#define H_PADDLE_H	PADDLE_H * 0.5f
+constexpr float BULLET_W = 16.f;
+constexpr float BULLET_H = 24.f;
+
+constexpr float H_BULLET_W = BULLET_W * 0.5f;
+constexpr float H_BULLET_H = BULLET_H * 0.5f;
 
 // SFML Shortcuts
 using Key = sf::Keyboard::Key;
@@ -27,8 +27,3 @@ using Key = sf::Keyboard::Key;
 using the_clock = std::chrono::high_resolution_clock;
 using time_point = std::chrono::time_point<the_clock>;
 using ms = std::chrono::milliseconds;
-
-#define now()	the_clock::now()
-
-// Util
-#define clamp(a, lo, hi)		(a > hi) ? hi : (a < lo) ? lo : a

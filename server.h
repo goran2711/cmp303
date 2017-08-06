@@ -7,8 +7,8 @@ namespace Network
 {
 	namespace Server
 	{
-		extern std::atomic<bool> _isServerRunning;
-		extern std::condition_variable _condServerClosed;
+		extern std::atomic<bool> gIsServerRunning;
+		extern std::condition_variable gCondServerClosed;
 
 		bool StartServer(const sf::IpAddress& address, Port port);
 		void CloseServer();

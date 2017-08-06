@@ -1,7 +1,7 @@
 #include "player.h"
 #include "command.h"
 #include "common.h"
-#include <iostream>
+#include "network.h"
 
 void Player::RunCommand(const Command& cmd, bool rec)
 {
@@ -23,3 +23,16 @@ void Player::RunCommand(const Command& cmd, bool rec)
 		mPosition.x += (cmd.direction == Command::LEFT) ? -distance : distance;
 	}
 }
+
+sf::Packet & operator<<(sf::Packet & p, const Player & player)
+{
+	p << player.mPID << player.mLastCommandID << player.mColour << player.mPosition;
+	return p;
+}
+
+sf::Packet& operator >> (sf::Packet& p, Player& player)
+{
+	p >> player.mPID >> player.mLastCommandID >> player.mColour >> player.mPosition;
+	return p;
+}
+

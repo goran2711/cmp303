@@ -3,38 +3,44 @@
 */
 // Project is x64
 
-#include <iostream>
 #include <thread>
 #include "server.h"
 #include "client.h"
+#include "debug.h"
+using namespace Network;
 
 #define SERVERIP	"127.0.0.1"
 #define SERVERPORT	5555
 
-int main()
+void WaitTillServerStops()
 {
-	using namespace Network;
 	std::mutex dummyMutex;
 	std::unique_lock<std::mutex> dummyLock(dummyMutex);
 
-	std::cout << "y: host game\nn: join game\nd: dedicated server\n";
+	Server::gCondServerClosed.wait(dummyLock, [&] { return !Server::gIsServerRunning.load(); });
+}
+
+int main()
+{
+	debug << "y: host game\nn: join game\nd: dedicated server\n";
 	char input{};
 	std::cin >> input;
 
-	if (input == 'y' || input == 'd')
+	input = tolower(input);
+
+	bool isHost = (input == 'y' || input == 'd');
+	bool isDedicated = input == 'd';
+
+	if (isHost)
 		Server::StartServer({ SERVERIP }, SERVERPORT);
 
-	if (input != 'd')
-		Client::StartClient({ SERVERIP }, SERVERPORT);
+	if (isDedicated)
+		WaitTillServerStops();
 	else
-		Server::_condServerClosed.wait(dummyLock, [&] { return !Server::_isServerRunning.load(); });
+		Client::StartClient({ SERVERIP }, SERVERPORT);
 
-	if (input == 'y' || input == 'd')
+	if (isHost)
 		Server::CloseServer();
-
-	#ifndef _DEBUG
-	std::cin.get();
-	#endif
 
 	return 0;
 }

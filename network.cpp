@@ -2,13 +2,6 @@
 
 namespace Network
 {
-	sf::Packet InitPacket(PacketType type)
-	{
-		sf::Packet packet;
-		packet << sf::Uint8(type);
-		return packet;
-	}
-
 	void Connection::Send(sf::Packet& p)
 	{
 		Status ret;
@@ -46,4 +39,24 @@ namespace Network
 
 		return true;
 	}
+
+	sf::Packet InitPacket(PacketType type)
+	{
+		sf::Packet packet;
+		packet << sf::Uint8(type);
+		return packet;
+	}
 }
+
+sf::Packet& operator<<(sf::Packet& p, const sf::Vector2f& v)
+{
+	p << v.x << v.y;
+	return p;
+}
+
+sf::Packet& operator>>(sf::Packet& p, sf::Vector2f& v)
+{
+	p >> v.x >> v.y;
+	return p;
+}
+

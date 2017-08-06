@@ -1,24 +1,25 @@
 #include "client.h"
-#include <iostream>
+#include <list>
 #include <functional>
 #include <SFML/Graphics.hpp>
 #include "world.h"
 #include "command.h"
 #include "common.h"
-
-#define INTERPOLATION_TIME_MS	250
+#include "debug.h"
 
 namespace Network
 {
 	namespace Client
 	{
-		// Networking
-		sf::TcpSocket _socket;
-		bool _isRunning;
+		constexpr int INTERPOLATION_TIME_MS = 250;
 
-		bool _isPredicting = true;
-		bool _isReconciling = true;
-		bool _isInterpolating = true;
+		// Networking
+		sf::TcpSocket gSocket;
+		bool gIsRunning;
+
+		bool gIsPredicting = true;
+		bool gIsReconciling = true;
+		bool gIsInterpolating = true;
 
 		enum ClientStatus
 		{
@@ -26,43 +27,43 @@ namespace Network
 			STATUS_JOINING,
 			STATUS_PLAYING,
 			STATUS_SPECTATING,
-		} _status;
+		} gStatus;
 
 		// Graphics
-		std::unique_ptr<sf::RenderWindow> _window;
+		std::unique_ptr<sf::RenderWindow> gWindow;
 
 		// Game
-		uint64_t _elapsedTime = 0;
+		uint64_t gElapsedTime = 0;
 
-		uint8_t _myID;
-		World _world;
+		uint8_t gMyID;
+		World gWorld;
 
-		std::list<Command> _commands;
-		std::list<WorldSnapshot> _snapshots;
+		std::list<Command> gCommands;
+		std::list<WorldSnapshot> gSnapshots;
 
-		bool _viewInverted = false;
+		bool gViewInverted = false;
 
 		void InitializeWindow(const char* title)
 		{
-			_window = std::make_unique<sf::RenderWindow>(sf::VideoMode(VP_WIDTH, VP_HEIGHT), title);
-			_window->setFramerateLimit(30);
-			_window->requestFocus();
+			gWindow = std::make_unique<sf::RenderWindow>(sf::VideoMode(VP_WIDTH, VP_HEIGHT), title);
+			gWindow->setFramerateLimit(30);
+			gWindow->requestFocus();
 		}
 
 		uint64_t GetRenderTime()
 		{
-			return (_elapsedTime > INTERPOLATION_TIME_MS) ? _elapsedTime - INTERPOLATION_TIME_MS : 0;
+			return (gElapsedTime > INTERPOLATION_TIME_MS) ? gElapsedTime - INTERPOLATION_TIME_MS : 0;
 		}
 
 		void DeleteOldSnapshots(uint64_t renderTime)
 		{
-			for (auto it = _snapshots.rbegin(); it != _snapshots.rend(); ++it)
+			for (auto it = gSnapshots.rbegin(); it != gSnapshots.rend(); ++it)
 			{
 				// If this snapshot came before our render time
 				if (it->clientTime <= renderTime)
 				{
 					// Start deleting from this point
-					_snapshots.erase(_snapshots.begin(), (++it).base());
+					gSnapshots.erase(gSnapshots.begin(), (++it).base());
 					break;
 				}
 			}
@@ -75,24 +76,24 @@ namespace Network
 			auto p = InitPacket(PACKET_CLIENT_JOIN);
 			p << 0xA0FFA0FF;
 
-			std::cout << "CLIENT: Sent join request to server" << std::endl;
-			_socket.send(p);
-			_status = STATUS_JOINING;
+			debug << "CLIENT: Sent join request to server" << std::endl;
+			gSocket.send(p);
+			gStatus = STATUS_JOINING;
 		}
 
 		DEF_SEND_PARAM(PACKET_CLIENT_CMD)(const Command& cmd)
 		{
 			auto p = InitPacket(PACKET_CLIENT_CMD);
-			p << _myID << cmd;
+			p << gMyID << cmd;
 
-			_socket.send(p);
+			gSocket.send(p);
 		}
 
-		DEF_CLIENT_SEND(PACKET_CLIENT_QUIT)
+		DEF_CLIENT_SEND(PACKET_CLIENT_SHOOT)
 		{
-			auto p = InitPacket(PACKET_CLIENT_QUIT);
+			auto p = InitPacket(PACKET_CLIENT_SHOOT);
 
-			_socket.send(p);
+			gSocket.send(p);
 		}
 
 		// RECEIVE FUNCTIONS ///////////////////////////////
@@ -102,40 +103,40 @@ namespace Network
 		DEF_CLIENT_RECV(PACKET_SERVER_WELCOME)
 		{
 			float viewRotation;
-			p >> _myID >> viewRotation;
+			p >> gMyID >> viewRotation;
 
-			std::cout << "CLIENT: Server assigned us id #" << (int) _myID << std::endl;
+			debug << "CLIENT: Server assigned us id #" << (int) gMyID << std::endl;
 
 			char title[32];
-			sprintf_s(title, "Client #%d", _myID);
+			sprintf_s(title, "Client #%d", gMyID);
 			InitializeWindow(title);
 
 			if (viewRotation != 0.f)
 			{
-				sf::View view = _window->getView();
+				sf::View view = gWindow->getView();
 				view.setRotation(viewRotation);
-				_window->setView(view);
+				gWindow->setView(view);
 
-				_viewInverted = true;
+				gViewInverted = true;
 			}
 
-			_status = STATUS_PLAYING;
+			gStatus = STATUS_PLAYING;
 			return true;
 		}
 
 		DEF_CLIENT_RECV(PACKET_SERVER_SPECTATOR)
 		{
-			std::cout << "CLIENT: No more available player slots; we are a spectator" << std::endl;
+			debug << "CLIENT: No more available player slots; we are a spectator" << std::endl;
 
 			InitializeWindow("Spectating");
 
-			_status = STATUS_SPECTATING;
+			gStatus = STATUS_SPECTATING;
 			return true;
 		}
 
 		DEF_CLIENT_RECV(PACKET_SERVER_FULL)
 		{
-			std::cout << "CLIENT: Could not join server because it is full" << std::endl;
+			debug << "CLIENT: Could not join server because it is full" << std::endl;
 
 			return false;
 		}
@@ -145,17 +146,17 @@ namespace Network
 			// We don't care about state updates
 			// if we are still waiting to learn if
 			// we can join the server
-			if (_status == STATUS_JOINING)
+			if (gStatus == STATUS_JOINING)
 				return true;
 
 			WorldSnapshot snapshot;
 			p >> snapshot;
 
 			// Overwrite last snapshot if we receive two snapshots in the same frame
-			if (_snapshots.empty() || _snapshots.back().clientTime != _elapsedTime)
-				_snapshots.push_back(snapshot);
+			if (gSnapshots.empty() || gSnapshots.back().clientTime != gElapsedTime)
+				gSnapshots.push_back(snapshot);
 
-			_snapshots.back().clientTime = _elapsedTime;
+			gSnapshots.back().clientTime = gElapsedTime;
 
 			// Delete old snapshots
 			uint64_t renderTime = GetRenderTime();
@@ -164,16 +165,16 @@ namespace Network
 			DeleteOldSnapshots(renderTime);
 
 			// Update world
-			_world = _snapshots.back().snapshot;
+			gWorld = gSnapshots.back().snapshot;
 
 			// Reconciliation
-			if (_isReconciling && !_commands.empty())
+			if (gIsReconciling && !gCommands.empty())
 			{
-				Player* me = _world.GetPlayer(_myID);
+				Player* me = gWorld.GetPlayer(gMyID);
 				if (me)
 				{
 					// Last commandID on server
-					uint32_t lastCommandID = me->lastCommandID();
+					uint32_t lastCommandID = me->GetLastCommandID();
 
 					// Remove older commands
 					const auto pred = [lastCommandID](const auto& cmd)
@@ -181,12 +182,12 @@ namespace Network
 						return cmd.id <= lastCommandID;
 					};
 
-					auto it = std::remove_if(_commands.begin(), _commands.end(), pred);
-					_commands.erase(it, _commands.end());
+					auto it = std::remove_if(gCommands.begin(), gCommands.end(), pred);
+					gCommands.erase(it, gCommands.end());
 
 					// Reapply commands the server had not yet processed
-					for (const auto& cmd : _commands)
-						_world.RunCommand(cmd, _myID, true);
+					for (const auto& cmd : gCommands)
+						gWorld.RunCommand(cmd, gMyID, true);
 				}
 			}
 
@@ -194,23 +195,23 @@ namespace Network
 		}
 
 		using ClientReceiveCallback = std::function<bool(sf::Packet&)>;
-		const ClientReceiveCallback _receivePacket[] = {
+		const ClientReceiveCallback gReceivePacket[] = {
 			nullptr,						// PACKET_CLIENT_JOIN
 			RECV(PACKET_SERVER_WELCOME),
 			RECV(PACKET_SERVER_SPECTATOR),
 			RECV(PACKET_SERVER_FULL),
 			nullptr,						// PACKET_CLIENT_CMD
 			RECV(PACKET_SERVER_UPDATE),
-			nullptr,						// PACKET_CLIENT_QUIT
+			nullptr,						// PACKET_CLIENT_SHOOT
 		};
 
 		bool ConnectToServer(const sf::IpAddress& address, Port port)
 		{
-			std::cout << "CLIENT: Connecting to " << address.toString() << ':' << port << std::endl;
-			if (_socket.connect(address, port) != Status::Done)
+			debug << "CLIENT: Connecting to " << address.toString() << ':' << port << std::endl;
+			if (gSocket.connect(address, port) != Status::Done)
 				return false;
 
-			_socket.setBlocking(false);
+			gSocket.setBlocking(false);
 
 			SEND(PACKET_CLIENT_JOIN)();
 			return true;
@@ -219,7 +220,7 @@ namespace Network
 		void Disconnect()
 		{
 			// TODO: Notify server
-			_socket.disconnect();
+			gSocket.disconnect();
 		}
 
 		bool ReceiveFromServer()
@@ -227,12 +228,12 @@ namespace Network
 			while (true)
 			{
 				sf::Packet p;
-				auto ret = _socket.receive(p);
+				auto ret = gSocket.receive(p);
 
 				switch (ret)
 				{
 					case Status::Disconnected:
-						std::cerr << "CLIENT: Lost connection to server" << std::endl;
+						debug << "CLIENT: Lost connection to server" << std::endl;
 					case Status::Error:
 					case Status::Partial:
 						return false;
@@ -243,9 +244,9 @@ namespace Network
 				uint8_t type;
 				p >> type;
 
-				if (type < PACKET_END && _receivePacket[type] != nullptr)
+				if (type < PACKET_END && gReceivePacket[type] != nullptr)
 				{
-					if (!_receivePacket[type](p))
+					if (!gReceivePacket[type](p))
 						return false;
 				}
 			}
@@ -264,42 +265,51 @@ namespace Network
 		bool HandleEvents()
 		{
 			sf::Event event;
-			while (_window->pollEvent(event))
+			while (gWindow->pollEvent(event))
 			{
 				switch (event.type)
 				{
 					case sf::Event::Closed:
 						return false;
 					case sf::Event::KeyPressed:
-						if (event.key.code == Key::Escape)
-							return false;
+						switch (event.key.code)
+						{
+							case Key::Escape:
+								return false;
 
-						// Control networking strategies
-						else if (event.key.code == Key::F1)
-						{
-							_isPredicting = !_isPredicting;
-							std::cout << "Prediction: " << std::boolalpha << _isPredicting << std::endl;
+							// Control networking strategies
+							case Key::F1:
+							{
+								gIsPredicting = !gIsPredicting;
+								debug << "Prediction: " << std::boolalpha << gIsPredicting << std::endl;
 
-							if (_isReconciling)
-							{
-								_isReconciling = false;
-								std::cout << "Reconciliation: " << std::boolalpha << _isReconciling << std::endl;
+								if (gIsReconciling)
+								{
+									gIsReconciling = false;
+									debug << "Reconciliation: " << std::boolalpha << gIsReconciling << std::endl;
+								}
 							}
-						}
-						else if (event.key.code == Key::F2)
-						{
-							_isReconciling = !_isReconciling;
-							if (_isReconciling && !_isPredicting)
+							break;
+							case Key::F2:
 							{
-								_isPredicting = true;
-								std::cout << "Prediction: " << std::boolalpha << _isPredicting << std::endl;
+								gIsReconciling = !gIsReconciling;
+								if (gIsReconciling && !gIsPredicting)
+								{
+									gIsPredicting = true;
+									debug << "Prediction: " << std::boolalpha << gIsPredicting << std::endl;
+								}
+								debug << "Reconciliation: " << std::boolalpha << gIsReconciling << std::endl;
 							}
-							std::cout << "Reconciliation: " << std::boolalpha << _isReconciling << std::endl;
-						}
-						else if (event.key.code == Key::F3)
-						{
-							_isInterpolating = !_isInterpolating;
-							std::cout << "Interpolation: " << std::boolalpha << _isInterpolating << std::endl;
+							break;
+							case Key::F3:
+							{
+								gIsInterpolating = !gIsInterpolating;
+								debug << "Interpolation: " << std::boolalpha << gIsInterpolating << std::endl;
+							}
+							break;
+							case Key::Space:
+								SEND(PACKET_CLIENT_SHOOT)();
+								break;
 						}
 						break;
 				}
@@ -312,7 +322,7 @@ namespace Network
 		{
 			static uint32_t commandID = 0;
 
-			if (_window->hasFocus())
+			if (gWindow->hasFocus())
 			{
 				Command cmd;
 				cmd.id = commandID++;
@@ -321,20 +331,20 @@ namespace Network
 				Command::Direction direction = Command::IDLE;
 
 				if (sf::Keyboard::isKeyPressed(Key::A))
-					direction = (_viewInverted) ? Command::RIGHT : Command::LEFT;
+					direction = (gViewInverted) ? Command::RIGHT : Command::LEFT;
 				if (sf::Keyboard::isKeyPressed(Key::D))
-					direction = (_viewInverted) ? Command::LEFT : Command::RIGHT;
+					direction = (gViewInverted) ? Command::LEFT : Command::RIGHT;
 
 				if (direction != Command::IDLE)
 				{
 					cmd.direction = direction;
 
 					// Client-side prediction
-					if (_isPredicting)
+					if (gIsPredicting)
 					{
-						_commands.push_back(cmd);
+						gCommands.push_back(cmd);
 
-						_world.RunCommand(cmd, _myID, false);
+						gWorld.RunCommand(cmd, gMyID, false);
 					}
 
 					// Send to server
@@ -348,7 +358,7 @@ namespace Network
 		{
 			WorldSnapshot* to = nullptr;
 			WorldSnapshot* from = nullptr;
-			for (auto& snapshot : _snapshots)
+			for (auto& snapshot : gSnapshots)
 			{
 				if (snapshot.clientTime > renderTime)
 				{
@@ -370,13 +380,29 @@ namespace Network
 				for (const auto& playerTo : to.snapshot.GetPlayers())
 				{
 					// Only interpolate if this is the same player in both snapshots, and it is not us
-					if (playerFrom.pid() == playerTo.pid() && playerFrom.pid() != _myID)
+					if (playerFrom.GetID() == playerTo.GetID() && playerFrom.GetID() != gMyID)
 					{
-						auto playerReal = _world.GetPlayer(playerFrom.pid());
+						auto playerReal = gWorld.GetPlayer(playerFrom.GetID());
 						if (playerReal)
 						{
-							sf::Vector2f newPos = (playerTo.position() - playerFrom.position()) * alpha + playerFrom.position();
+							sf::Vector2f newPos = (playerTo.GetPosition() - playerFrom.GetPosition()) * alpha + playerFrom.GetPosition();
 							playerReal->SetPosition(newPos);
+						}
+					}
+				}
+			}
+
+			for (const auto& bulletFrom : from.snapshot.GetBullets())
+			{
+				for (const auto& bulletTo : to.snapshot.GetBullets())
+				{
+					if (bulletFrom.GetID() == bulletTo.GetID())
+					{
+						auto bulletReal = gWorld.GetBullet(bulletFrom.GetID());
+						if (bulletReal)
+						{
+							sf::Vector2f newPos = (bulletTo.GetPosition() - bulletFrom.GetPosition()) * alpha + bulletFrom.GetPosition();
+							bulletReal->SetPosition(newPos);
 						}
 					}
 				}
@@ -385,19 +411,19 @@ namespace Network
 
 		void ClientLoop()
 		{
-			_isRunning = true;
+			gIsRunning = true;
 
 			uint64_t dt = 0;
 			sf::Clock deltaClock;
 
 			// Main loop
-			while (_isRunning)
+			while (gIsRunning)
 			{
 				// Networking
 				if (!WaitForSelector())
 					break;
 
-				switch (_status)
+				switch (gStatus)
 				{
 					case STATUS_JOINING:
 						continue;
@@ -407,15 +433,15 @@ namespace Network
 					case STATUS_SPECTATING:
 						// Debug and 'meta' input
 						if (!HandleEvents())
-							_isRunning = false;
+							gIsRunning = false;
 				}
 
 				// Interpolation
-				if (_isInterpolating)
+				if (gIsInterpolating)
 				{
 					uint64_t renderTime = GetRenderTime();
 
-					// Get the two snapshots between which the position @ renderTime exists
+					// Get the two snapshots between which the.GetPosition @ renderTime exists
 					auto snapshots = GetRelevantSnapshots(renderTime);
 					WorldSnapshot* to = std::get<0>(snapshots);
 					WorldSnapshot* from = std::get<1>(snapshots);
@@ -426,24 +452,24 @@ namespace Network
 				}
 
 				// Render
-				_window->clear();
-				World::RenderWorld(_world, *_window);
-				_window->display();
+				gWindow->clear();
+				World::RenderWorld(gWorld, *gWindow);
+				gWindow->display();
 
 				// Timing
 				dt = deltaClock.restart().asMilliseconds();
-				_elapsedTime += dt;
+				gElapsedTime += dt;
 			}
 
-			std::cout << "CLIENT: Closing..." << std::endl;
-			_isRunning = false;
+			debug << "CLIENT: Closing..." << std::endl;
+			gIsRunning = false;
 		}
 
 		bool StartClient(const sf::IpAddress& address, Port port)
 		{
 			if (!ConnectToServer(address, port))
 			{
-				std::cerr << "CLIENT: Failed to connect to server" << std::endl;
+				debug << "CLIENT: Failed to connect to server" << std::endl;
 				return false;
 			}
 

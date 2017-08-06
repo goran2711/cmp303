@@ -1,10 +1,6 @@
 #pragma once
 #include <SFML/Network.hpp>
 #include <memory>
-#include "command.h"
-#include "player.h"
-#include "world.h"
-#include "common.h"
 
 #define DEF_SERVER_RECV(type)		void Receive_ ## type ## (ConnectionPtr connection, sf::Packet& p)
 #define DEF_SERVER_SEND(type)		void Send_ ## type ## (ConnectionPtr connection)
@@ -17,17 +13,10 @@
 #define RECV(type)					Receive_ ## type
 #define SEND(type)					Send_ ## type
 
-#define INVALID_CID					0xFFFF
-
-#define RECONNECT_TIMEOUT_MS		20000
-
-struct Entity;
-
 namespace Network
 {
 	using Status = sf::Socket::Status;
 	using Port = unsigned short;
-	using Socket = std::unique_ptr<sf::TcpSocket>;
 
 	struct Connection
 	{
@@ -36,8 +25,6 @@ namespace Network
 
 		uint8_t pid;
 		bool active = false;
-		bool disconnected = false;
-		time_point timeout;
 		sf::TcpSocket socket;
 	};
 
@@ -45,13 +32,13 @@ namespace Network
 
 	enum PacketType
 	{
-		PACKET_CLIENT_JOIN,
-		PACKET_SERVER_WELCOME,
-		PACKET_SERVER_SPECTATOR,
-		PACKET_SERVER_FULL,
-		PACKET_CLIENT_CMD,
-		PACKET_SERVER_UPDATE,
-		PACKET_CLIENT_QUIT,
+		PACKET_CLIENT_JOIN,			// Request from the client to the server to join
+		PACKET_SERVER_WELCOME,		// Packet letting the client know they can join as a player
+		PACKET_SERVER_SPECTATOR,	// Packet letting the client know they can join as a spectator
+		PACKET_SERVER_FULL,			// Packet letting the client know it is full
+		PACKET_CLIENT_CMD,			// Packet containing a movement command from a client
+		PACKET_SERVER_UPDATE,		// Packet from the server containing the current state of the game
+		PACKET_CLIENT_SHOOT,		// Request from the client to spawn a bullet
 		PACKET_END,
 	};
 
@@ -59,90 +46,28 @@ namespace Network
 }
 
 // Overloads
-namespace
+sf::Packet& operator<<(sf::Packet& p, const sf::Vector2f& v);
+sf::Packet& operator >> (sf::Packet& p, sf::Vector2f& v);
+
+template<typename T>
+sf::Packet& operator<<(sf::Packet& p, const std::vector<T>& v)
 {
-	sf::Packet& operator<<(sf::Packet& p, const sf::Vector2f& v)
-	{
-		p << v.x << v.y;
-		return p;
-	}
+	p << v.size();
+	for (const auto& i : v)
+		p << i;
 
-	sf::Packet& operator >> (sf::Packet& p, sf::Vector2f& v)
-	{
-		p >> v.x >> v.y;
-		return p;
-	}
+	return p;
+}
 
-	// Move to cpp
-	sf::Packet& operator<<(sf::Packet& p, const Command& cmd)
-	{
-		int direction = cmd.direction;
-		p << cmd.id << cmd.dt << direction;
-		return p;
-	}
+template<typename T>
+sf::Packet& operator>>(sf::Packet& p, std::vector<T>& v)
+{
+	size_t size;
+	p >> size;
+	v.resize(size);
 
-	sf::Packet& operator >> (sf::Packet& p, Command& cmd)
-	{
-		int direction;
-		p >> cmd.id >> cmd.dt >> direction;
-		cmd.direction = (Command::Direction)direction;
-		return p;
-	}
+	for (auto& i : v)
+		p >> i;
 
-	sf::Packet& operator<<(sf::Packet& p, const Player& player)
-	{
-		p << player.pid() << player.lastCommandID() << player.colour() << player.position();
-		return p;
-	}
-
-	sf::Packet& operator >> (sf::Packet& p, Player& player)
-	{
-		uint8_t pid;
-		int lastCommandID;
-		uint32_t colour;
-		sf::Vector2f position;
-		p >> pid >> lastCommandID >> colour >> position;
-
-		player.SetPID(pid);
-		player.SetLastCommandID(lastCommandID);
-		player.SetColour(colour);
-		player.SetPosition(position);
-
-		return p;
-	}
-
-	sf::Packet& operator<<(sf::Packet& p, const World& world)
-	{
-		p << world.GetPlayers().size();
-		for (const auto& player : world.GetPlayers())
-		{
-			p << player;
-		}
-
-		return p;
-	}
-
-	sf::Packet& operator >> (sf::Packet& p, World& world)
-	{
-		size_t size;
-		p >> size;
-		world.GetPlayers().resize(size);
-
-		for (auto& player : world.GetPlayers())
-			p >> player;
-
-		return p;
-	}
-
-	sf::Packet& operator<<(sf::Packet& p, const WorldSnapshot& snapshot)
-	{
-		p << snapshot.snapshot << snapshot.serverTime << snapshot.clientTime;
-		return p;
-	}
-
-	sf::Packet& operator >> (sf::Packet& p, WorldSnapshot& snapshot)
-	{
-		p >> snapshot.snapshot >> snapshot.serverTime << snapshot.clientTime;
-		return p;
-	}
+	return p;
 }
