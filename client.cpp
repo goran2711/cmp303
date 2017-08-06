@@ -108,12 +108,6 @@ namespace Network
 				}
 			}
 
-			sf::Vector2f oldpos;
-			{
-				auto p = _world.GetPlayer(_myID);
-				if (p)
-					oldpos = p->position();
-			}
 			// Update world
 			_world = _snapshots.back().snapshot;
 
@@ -138,13 +132,6 @@ namespace Network
 					// Reapply commands the server had not yet processed
 					for (const auto& cmd : _commands)
 						_world.RunCommand(cmd, _myID);
-
-					sf::Vector2f newPos = me->position();
-
-					if (newPos == oldpos)
-						std::cout << "oldpos == newpos\t(" << newPos.x << ", " << newPos.y << ")" << std::endl;
-					else
-						std::cout << "oldpos != newpos" << std::endl;
 				}
 			}
 

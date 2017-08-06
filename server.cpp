@@ -11,7 +11,7 @@ namespace Network
 {
 	namespace Server
 	{
-		constexpr int UPDATE_INTERVAL_MS = 500;
+		constexpr int UPDATE_INTERVAL_MS = 100;
 
 		// Threads
 		std::thread _serverThread;
