@@ -79,7 +79,8 @@ namespace Network
 			WorldSnapshot snapshot;
 			p >> snapshot;
 
-			// If we currently have no snapshots, or the latest snapshot is not from this frame
+			// TODO: Double-check with inspiration for this part: https://github.com/robinarnesson/game-networking/blob/master/client.hpp#L166
+			// Overwrite last snapshot if the clientTime hasn't changed
 			if (_snapshots.empty() || _snapshots.back().clientTime != _elapsedTime)
 				_snapshots.push_back(snapshot);
 
@@ -89,17 +90,19 @@ namespace Network
 			// renderTime: The the at which the current interpolation would have started
 			uint64_t renderTime = (_elapsedTime > INTERPOLATION_TIME_MS) ? _elapsedTime - INTERPOLATION_TIME_MS : 0;
 
-			bool removeNext = false;
-			auto it = _snapshots.rbegin();
-			while (it != _snapshots.rend())
+			// Delete old (irrelevant) snapshots
+			// I.e. snapshots that are older than renderTime
+
+			for (auto it = _snapshots.begin(); it != _snapshots.end(); ++it)
 			{
-				if (removeNext)
-					it = std::list<WorldSnapshot>::reverse_iterator(_snapshots.erase(it.base()));
-				// If this snapshot is older than the beginning of the current interpolation
-				// and the snapshot is 
-				else if (it->clientTime <= renderTime && it->clientTime > INTERPOLATION_TIME_MS)
-					removeNext = true;
-				++it;
+				// First snapshot that is newer than renderTime,
+				// so delete all the ones that came before it
+				// EXCEPT the previous.
+				if (it->clientTime >= renderTime)
+				{
+					_snapshots.erase(_snapshots.begin(), (it == _snapshots.begin() ? it : --it));
+					break;
+				}
 			}
 
 			_world = _snapshots.back().snapshot;
@@ -139,7 +142,6 @@ namespace Network
 			_socket.setBlocking(false);
 			_selector.add(_socket);
 
-			// TODO: Send a join request, containing the desired desired player colour 
 			SEND(PACKET_CLIENT_JOIN)();
 
 			return true;
@@ -267,6 +269,8 @@ namespace Network
 
 				// Interpolation
 				uint64_t renderTime = (_elapsedTime > INTERPOLATION_TIME_MS) ? _elapsedTime - INTERPOLATION_TIME_MS : 0;
+
+				// Get the two snapshots between which the position @ renderTime exists
 				WorldSnapshot* to = nullptr;
 				WorldSnapshot* from = nullptr;
 				for (auto& snapshot : _snapshots)
@@ -281,20 +285,15 @@ namespace Network
 
 				if (to && from)
 				{
-					float alpha = (float) (_elapsedTime - from->clientTime) / (float) (to->clientTime - from->clientTime);
-					alpha -= clamp(alpha, 0.f, 1.0f);
-					std::cout << "CLIENT: Alpha: " << alpha << std::endl;
-					//alpha = clamp(alpha, 0.f, 1.f);
-					// Alpha always ~0.9?
+					float alpha = (float) (renderTime - from->clientTime) / (float) (to->clientTime - from->clientTime);
 
 					for (auto& playerFrom : from->snapshot.players())
 					{
 						for (auto playerTo : to->snapshot.players())
 						{
+							// If this is the same player in both snapshots, and it's not us
 							if (playerFrom.pid() == playerTo.pid() && playerTo.pid() != _myID)
 							{
-								std::cout << "CLIENT: RenderTime: " << renderTime << std::endl;
-
 								auto playerReal = _world.GetPlayer(playerFrom.pid());
 								if (playerReal)
 								{
