@@ -7,7 +7,7 @@ struct Command;
 class Player
 {
 public:
-	static constexpr float MOVE_SPEED = 200.f;
+	static constexpr float MOVE_SPEED = 400.f;
 
 	void RunCommand(const Command& cmd);
 

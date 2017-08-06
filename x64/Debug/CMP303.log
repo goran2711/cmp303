@@ -1,20 +1,22 @@
 ﻿  client.cpp
-c:\users\xps\documents\visual studio 2015\projects\cmp303_v8\cmp303\client.cpp(222): warning C4244: 'initializing': conversion from 'float' to 'uint64_t', possible loss of data
-c:\users\xps\documents\visual studio 2015\projects\cmp303_v8\cmp303\client.cpp(140): warning C4018: '<=': signed/unsigned mismatch
-  c:\program files (x86)\microsoft visual studio 14.0\vc\include\algorithm(1480): note: see reference to function template instantiation 'auto Network::Client::Receive_PACKET_SERVER_UPDATE::<lambda_cf72893f3d0209bafbfef5d8617e4f0b>::operator ()<Command>(const Command &) const' being compiled
+c:\users\xps\documents\visual studio 2015\projects\cmp303_v8\cmp303\client.cpp(286): warning C4244: '=': conversion from 'float' to 'uint64_t', possible loss of data
+c:\users\xps\documents\visual studio 2015\projects\cmp303_v8\cmp303\client.cpp(357): warning C4244: 'initializing': conversion from 'float' to 'uint64_t', possible loss of data
+c:\users\xps\documents\visual studio 2015\projects\cmp303_v8\cmp303\client.cpp(378): warning C4244: 'argument': conversion from 'uint64_t' to 'float', possible loss of data
+c:\users\xps\documents\visual studio 2015\projects\cmp303_v8\cmp303\client.cpp(132): warning C4018: '<=': signed/unsigned mismatch
+  c:\program files (x86)\microsoft visual studio 14.0\vc\include\algorithm(1480): note: see reference to function template instantiation 'auto Network::Client::Receive_PACKET_SERVER_UPDATE::<lambda_0708a17de1888ea72c995bd8bb60f300>::operator ()<Command>(const Command &) const' being compiled
   c:\program files (x86)\microsoft visual studio 14.0\vc\include\algorithm(1493): note: see reference to function template instantiation '_FwdIt std::_Remove_if_unchecked<std::_List_unchecked_iterator<std::_List_val<std::_List_simple_types<Command>>>,_Pr>(_FwdIt,_FwdIt,_Pr &)' being compiled
           with
           [
               _FwdIt=std::_List_unchecked_iterator<std::_List_val<std::_List_simple_types<Command>>>,
-              _Pr=Network::Client::Receive_PACKET_SERVER_UPDATE::<lambda_cf72893f3d0209bafbfef5d8617e4f0b>
+              _Pr=Network::Client::Receive_PACKET_SERVER_UPDATE::<lambda_0708a17de1888ea72c995bd8bb60f300>
           ]
-  c:\users\xps\documents\visual studio 2015\projects\cmp303_v8\cmp303\client.cpp(140): note: see reference to function template instantiation '_FwdIt std::remove_if<std::_List_iterator<std::_List_val<std::_List_simple_types<Command>>>,Network::Client::Receive_PACKET_SERVER_UPDATE::<lambda_cf72893f3d0209bafbfef5d8617e4f0b>>(_FwdIt,_FwdIt,_Pr)' being compiled
+  c:\users\xps\documents\visual studio 2015\projects\cmp303_v8\cmp303\client.cpp(135): note: see reference to function template instantiation '_FwdIt std::remove_if<std::_List_iterator<std::_List_val<std::_List_simple_types<Command>>>,Network::Client::Receive_PACKET_SERVER_UPDATE::<lambda_0708a17de1888ea72c995bd8bb60f300>>(_FwdIt,_FwdIt,_Pr)' being compiled
           with
           [
               _FwdIt=std::_List_iterator<std::_List_val<std::_List_simple_types<Command>>>,
-              _Pr=Network::Client::Receive_PACKET_SERVER_UPDATE::<lambda_cf72893f3d0209bafbfef5d8617e4f0b>
+              _Pr=Network::Client::Receive_PACKET_SERVER_UPDATE::<lambda_0708a17de1888ea72c995bd8bb60f300>
           ]
-  c:\users\xps\documents\visual studio 2015\projects\cmp303_v8\cmp303\client.cpp(21): note: see reference to class template instantiation 'std::unique_ptr<sf::RenderWindow,std::default_delete<_Ty>>' being compiled
+  c:\users\xps\documents\visual studio 2015\projects\cmp303_v8\cmp303\client.cpp(25): note: see reference to class template instantiation 'std::unique_ptr<sf::RenderWindow,std::default_delete<_Ty>>' being compiled
           with
           [
               _Ty=sf::RenderWindow

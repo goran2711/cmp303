@@ -17,6 +17,10 @@ namespace Network
 		sf::SocketSelector _selector;
 		bool _isRunning;
 
+		bool _isPredicting = true;
+		bool _isReconciling = true;
+		bool _isInterpolating = true;
+
 		// Graphics
 		std::unique_ptr<sf::RenderWindow> _window;
 
@@ -25,21 +29,21 @@ namespace Network
 
 		uint8_t _myID;
 		World _world;
+
+		std::list<Command> _commands;
 		std::list<WorldSnapshot> _snapshots;
 
-		// TODO: Store 'commands', which represent the state of the keyboard
-		// at a certain frame.
-		// Commands are only stored when it's considered an "eventful" frame, i.e. the player moves.
-		// They are also only stored when client-side prediction is turned on
-		// The commands are run by the player, and are gived to the player through the world
-		std::list<Command> _commands;
+		uint64_t GetRenderTime()
+		{
+			return (_elapsedTime > INTERPOLATION_TIME_MS) ? _elapsedTime - INTERPOLATION_TIME_MS : 0;
+		}
 
 		// SEND FUNCTIONS //////////////////////////////////
 
 		DEF_CLIENT_SEND(PACKET_CLIENT_JOIN)
 		{
 			auto p = InitPacket(PACKET_CLIENT_JOIN);
-			p << 0xFFFFFFFF;
+			p << 0xA0FFA0FF;
 
 			std::cout << "CLIENT: Sent join request to server" << std::endl;
 			_socket.send(p);
@@ -88,11 +92,10 @@ namespace Network
 
 			// Delete old snapshots
 			// renderTime: The the at which the current interpolation would have started
-			uint64_t renderTime = (_elapsedTime > INTERPOLATION_TIME_MS) ? _elapsedTime - INTERPOLATION_TIME_MS : 0;
+			uint64_t renderTime = GetRenderTime();
 
 			// Delete old (irrelevant) snapshots
 			// I.e. snapshots that are older than renderTime
-
 			for (auto it = _snapshots.begin(); it != _snapshots.end(); ++it)
 			{
 				// First snapshot that is newer than renderTime,
@@ -105,20 +108,44 @@ namespace Network
 				}
 			}
 
+			sf::Vector2f oldpos;
+			{
+				auto p = _world.GetPlayer(_myID);
+				if (p)
+					oldpos = p->position();
+			}
+			// Update world
 			_world = _snapshots.back().snapshot;
 
-			// Prediction + reconciliation
-			Player* me = _world.GetPlayer(_myID);
-			if (me)
+			// Reconciliation
+			if (_isReconciling && !_commands.empty())
 			{
-				// Last commandID on server
-				int lastCommandID = me->lastCommandID();
+				Player* me = _world.GetPlayer(_myID);
+				if (me)
+				{
+					// Last commandID on server
+					int lastCommandID = me->lastCommandID();
 
-				// Remove older commands
-				_commands.erase(std::remove_if(_commands.begin(), _commands.end(), [lastCommandID](const auto& cmd) { return cmd.id <= lastCommandID; }), _commands.end());
+					// Remove older commands
+					const auto pred = [lastCommandID](const auto& cmd)
+					{
+						return cmd.id <= lastCommandID;
+					};
 
-				for (const auto& cmd : _commands)
-					_world.RunCommand(cmd, _myID);
+					auto it = std::remove_if(_commands.begin(), _commands.end(), pred);
+					_commands.erase(it, _commands.end());
+
+					// Reapply commands the server had not yet processed
+					for (const auto& cmd : _commands)
+						_world.RunCommand(cmd, _myID);
+
+					sf::Vector2f newPos = me->position();
+
+					if (newPos == oldpos)
+						std::cout << "oldpos == newpos\t(" << newPos.x << ", " << newPos.y << ")" << std::endl;
+					else
+						std::cout << "oldpos != newpos" << std::endl;
+				}
 			}
 
 			return RECEIVE_ERROR_OK;
@@ -143,7 +170,6 @@ namespace Network
 			_selector.add(_socket);
 
 			SEND(PACKET_CLIENT_JOIN)();
-
 			return true;
 		}
 
@@ -188,13 +214,145 @@ namespace Network
 			return true;
 		}
 
-		void RunClient()
+		bool WaitForSelector()
+		{
+			if (!_selector.wait(sf::milliseconds(WAIT_TIME_MS)))
+				return true;
+
+			if (_selector.isReady(_socket))
+			{
+				if (!ReceiveFromServer())
+					return false;
+			}
+
+			return true;
+		}
+
+		bool HandleEvents()
+		{
+			sf::Event event;
+			while (_window->pollEvent(event))
+			{
+				switch (event.type)
+				{
+					case sf::Event::Closed:
+						return false;
+					case sf::Event::KeyPressed:
+						if (event.key.code == Key::Escape)
+							return false;
+
+						// Control networking strategies
+						else if (event.key.code == Key::F1)
+						{
+							_isPredicting = !_isPredicting;
+							std::cout << "Prediction: " << std::boolalpha << _isPredicting << std::endl;
+
+							if (_isReconciling)
+							{
+								_isReconciling = false;
+								std::cout << "Reconciliation: " << std::boolalpha << _isReconciling << std::endl;
+							}
+						}
+						else if (event.key.code == Key::F2)
+						{
+							_isReconciling = !_isReconciling;
+							if (_isReconciling && !_isPredicting)
+							{
+								_isPredicting = true;
+								std::cout << "Prediction: " << std::boolalpha << _isPredicting << std::endl;
+							}
+							std::cout << "Reconciliation: " << std::boolalpha << _isReconciling << std::endl;
+						}
+						else if (event.key.code == Key::F3)
+						{
+							_isInterpolating = !_isInterpolating;
+							std::cout << "Interpolation: " << std::boolalpha << _isInterpolating << std::endl;
+						}
+						break;
+				}
+			}
+
+			return true;
+		}
+
+		void BuildCommand(float dt)
+		{
+			static uint32_t commandID = 0;
+
+			if (_window->hasFocus())
+			{
+				Command cmd;
+				cmd.id = commandID++;
+				cmd.dt = dt;
+
+				Command::Direction direction = Command::IDLE;
+
+				if (sf::Keyboard::isKeyPressed(Key::A))
+					direction = Command::LEFT;
+				if (sf::Keyboard::isKeyPressed(Key::D))
+					direction = Command::RIGHT;
+
+				if (direction != Command::IDLE)
+				{
+					cmd.direction = direction;
+
+					// Client-side prediction
+					if (_isPredicting)
+					{
+						_commands.push_back(cmd);
+
+						_world.RunCommand(cmd, _myID);
+					}
+
+					// Send to server
+					SEND(PACKET_CLIENT_CMD)(cmd);
+				}
+			}
+		}
+
+		// Get the snapshots that we can interpolate postions at t == renderTime from
+		std::tuple<WorldSnapshot*, WorldSnapshot*> GetRelevantSnapshots(uint64_t renderTime)
+		{
+			WorldSnapshot* to = nullptr;
+			WorldSnapshot* from = nullptr;
+			for (auto& snapshot : _snapshots)
+			{
+				if (snapshot.clientTime > renderTime)
+				{
+					to = &snapshot;
+					break;
+				}
+				from = &snapshot;
+			}
+
+			return std::make_tuple(to, from);
+		}
+
+		void Interpolate(const WorldSnapshot& from, const WorldSnapshot& to, uint64_t renderTime)
+		{
+			float alpha = (float) (renderTime - from.clientTime) / (float) (to.clientTime - from.clientTime);
+
+			for (const auto& playerFrom : from.snapshot.GetPlayers())
+			{
+				for (const auto& playerTo : to.snapshot.GetPlayers())
+				{
+					// Only interpolate if this is the same player in both snapshots, and it is not us
+					if (playerFrom.pid() != playerTo.pid() || playerTo.pid() == _myID)
+						continue;
+
+					auto playerReal = _world.GetPlayer(playerFrom.pid());
+					if (playerReal)
+					{
+						sf::Vector2f newPos = (playerTo.position() - playerFrom.position()) * alpha + playerFrom.position();
+						playerReal->SetPosition(newPos);
+					}
+				}
+			}
+		}
+
+		void ClientLoop()
 		{
 			_isRunning = true;
-
-			sf::RectangleShape rect({ 128.f, 32.f });
-
-			uint32_t commandID = 0;
 
 			uint64_t dt = 0.f;
 			sf::Clock deltaClock;
@@ -203,17 +361,8 @@ namespace Network
 			while (_isRunning)
 			{
 				// Networking
-				if (_selector.wait(sf::milliseconds(WAIT_TIME_MS)))
-				{
-					if (_selector.isReady(_socket))
-					{
-						if (!ReceiveFromServer())
-						{
-							_isRunning = false;
-							break;
-						}
-					}
-				}
+				if (!WaitForSelector())
+					break;
 
 				// The RenderWindow is only created when we receive
 				// the PACKET_SERVER_WELCOME packet
@@ -223,86 +372,24 @@ namespace Network
 				_window->clear();
 
 				// Input
-				sf::Event event;
-				while (_window->pollEvent(event))
-				{
-					switch (event.type)
-					{
-						case sf::Event::Closed:
-							_isRunning = false;
-							break;
-						case sf::Event::KeyPressed:
-							if (event.key.code == sf::Keyboard::Escape)
-								_isRunning = false;
-							break;
-					}
-				}
+				if (!HandleEvents())
+					break;
 
-				// Movement code
-				if (_window->hasFocus())
-				{
-					Command cmd;
-					cmd.id = commandID++;
-					cmd.dt = dt;
-
-					Command::Direction direction = Command::IDLE;
-
-					if (sf::Keyboard::isKeyPressed(Key::A))
-						direction = Command::LEFT;
-					if (sf::Keyboard::isKeyPressed(Key::D))
-						direction = Command::RIGHT;
-
-					if (direction != Command::IDLE)
-					{
-						cmd.direction = direction;
-						// if client-side prediction
-						{
-							_commands.push_back(cmd);
-
-							_world.RunCommand(cmd, _myID);
-						}
-
-						// Send to server
-						SEND(PACKET_CLIENT_CMD)(cmd);
-					}
-				}
+				BuildCommand(dt);
 
 				// Interpolation
-				uint64_t renderTime = (_elapsedTime > INTERPOLATION_TIME_MS) ? _elapsedTime - INTERPOLATION_TIME_MS : 0;
-
-				// Get the two snapshots between which the position @ renderTime exists
-				WorldSnapshot* to = nullptr;
-				WorldSnapshot* from = nullptr;
-				for (auto& snapshot : _snapshots)
+				if (_isInterpolating)
 				{
-					if (snapshot.clientTime > renderTime)
-					{
-						to = &snapshot;
-						break;
-					}
-					from = &snapshot;
-				}
+					uint64_t renderTime = GetRenderTime();
 
-				if (to && from)
-				{
-					float alpha = (float) (renderTime - from->clientTime) / (float) (to->clientTime - from->clientTime);
+					// Get the two snapshots between which the position @ renderTime exists
+					auto snapshots = GetRelevantSnapshots(renderTime);
+					WorldSnapshot* to = std::get<0>(snapshots);
+					WorldSnapshot* from = std::get<1>(snapshots);
 
-					for (auto& playerFrom : from->snapshot.players())
-					{
-						for (auto playerTo : to->snapshot.players())
-						{
-							// If this is the same player in both snapshots, and it's not us
-							if (playerFrom.pid() == playerTo.pid() && playerTo.pid() != _myID)
-							{
-								auto playerReal = _world.GetPlayer(playerFrom.pid());
-								if (playerReal)
-								{
-									sf::Vector2f newPos = (playerTo.position() - playerFrom.position()) * alpha + playerFrom.position();
-									playerReal->SetPosition(newPos);
-								}
-							}
-						}
-					}
+					// If we have enough data
+					if (to && from)
+						Interpolate(*from, *to, renderTime);
 				}
 
 				// Render
@@ -312,6 +399,9 @@ namespace Network
 				dt = deltaClock.restart().asMilliseconds();
 				_elapsedTime += dt;
 			}
+
+			std::cout << "CLIENT: Closing..." << std::endl;
+			_isRunning = false;
 		}
 
 		bool StartClient(const sf::IpAddress& address, Port port)
@@ -319,7 +409,7 @@ namespace Network
 			if (!ConnectToServer(address, port))
 				return false;
 
-			RunClient();
+			ClientLoop();
 
 			Disconnect();
 			return true;

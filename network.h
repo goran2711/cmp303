@@ -114,8 +114,8 @@ namespace
 
 	sf::Packet& operator<<(sf::Packet& p, const World& world)
 	{
-		p << world.players().size();
-		for (const auto& player : world.players())
+		p << world.GetPlayers().size();
+		for (const auto& player : world.GetPlayers())
 		{
 			p << player;
 		}
@@ -127,9 +127,9 @@ namespace
 	{
 		size_t size;
 		p >> size;
-		world.players().resize(size);
+		world.GetPlayers().resize(size);
 
-		for (auto& player : world.players())
+		for (auto& player : world.GetPlayers())
 			p >> player;
 
 		return p;

@@ -7,19 +7,16 @@
 #include "world.h"
 #include "command.h"
 
-// Oh dear
-#define	SPAWN_LOC_1		sf::Vector2f(400.f, 32.f)
-#define SPAWN_LOC_2		sf::Vector2f(400.f, 568.f)
-
 namespace Network
 {
 	namespace Server
 	{
-		constexpr int UPDATE_INTERVAL_MS = 300;
+		constexpr int UPDATE_INTERVAL_MS = 500;
 
 		// Threads
 		std::thread _serverThread;
 		std::atomic<bool> _isServerRunning;
+		std::condition_variable _condServerClosed;
 
 		// Networking
 		sf::TcpListener _listener;
@@ -48,8 +45,8 @@ namespace Network
 		DEF_SERVER_SEND(PACKET_SERVER_FULL)
 		{
 			auto p = InitPacket(PACKET_SERVER_FULL);
-			
-			std::cout << "SERVER: A client tried to join, but we are at capacity" << std::endl;
+
+			std::cout << "SERVER: A client tried to join, but we are full" << std::endl;
 			connection->socket.send(p);
 		}
 
@@ -69,7 +66,11 @@ namespace Network
 			p >> colour;
 
 			Player player;
-			player.SetColour(colour);
+
+			if (!_world.GetPlayers().empty())
+				player.SetColour(0xA0A0FFFF);
+			else
+				player.SetColour(colour);
 
 			if (_world.AddPlayer(player))
 			{
@@ -138,9 +139,8 @@ namespace Network
 		std::vector<ConnectionPtr>::iterator DropClient(ConnectionPtr connection)
 		{
 			std::cout << "SERVER: Dropping client " << (int) connection->pid << std::endl;
+
 			_selector.remove(connection->socket);
-
-
 			_world.RemovePlayer(connection->pid);
 			connection->socket.disconnect();
 
@@ -224,12 +224,15 @@ namespace Network
 					_nextUpdatePoint = now() + ms(UPDATE_INTERVAL_MS);
 				}
 			}
+
+			_isServerRunning = false;
+			_condServerClosed.notify_all();
 		}
 
 		bool StartServer(const sf::IpAddress& address, Port port)
 		{
-			_nextUpdatePoint = now() + ms(UPDATE_INTERVAL_MS);
 			_isServerRunning = true;
+			_nextUpdatePoint = now() + ms(UPDATE_INTERVAL_MS);
 			_serverThread = std::thread([&] { ServerTask(address, port); });
 
 			return true;

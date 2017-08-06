@@ -4,10 +4,15 @@
 #define INVALID_ID	0
 #define FIRST_ID	1
 
+/* static */ const sf::Vector2f World::SPAWN_POSITIONS[2] = {
+		{ 400.f, 32.f  },
+		{ 400.f, 568.f }
+};
+
 /* static */ void World::RenderWorld(const World & world, sf::RenderWindow & window)
 {
 	sf::RectangleShape shape({ 128.f, 16.f });
-	
+
 	for (const auto& player : world.mPlayers)
 	{
 		shape.setFillColor(sf::Color(player.colour()));
@@ -28,9 +33,9 @@ bool World::AddPlayer(Player& player)
 
 	player.SetPID(newPID);
 
-	// TODO: Set position
-
 	mPlayers.push_back(player);
+
+	mPlayers.back().SetPosition(SPAWN_POSITIONS[mPlayers.size() % 2]);
 
 	return true;
 }

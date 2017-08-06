@@ -15,10 +15,12 @@ public:
 
 	Player* GetPlayer(uint8_t pid);
 
-	std::vector<Player>& players() { return mPlayers; }
-	const std::vector<Player>& players() const { return mPlayers; }
+	std::vector<Player>& GetPlayers() { return mPlayers; }
+	const std::vector<Player>& GetPlayers() const { return mPlayers; }
 
 private:
+	static const sf::Vector2f SPAWN_POSITIONS[2];
+
 	uint8_t GeneratePlayerID();
 
 	uint8_t mNewID = 1;
