@@ -1,36 +1,17 @@
-﻿  client.cpp
-client.cpp(285): warning C4244: '=': conversion from 'float' to 'uint64_t', possible loss of data
-client.cpp(356): warning C4244: 'initializing': conversion from 'float' to 'uint64_t', possible loss of data
-client.cpp(377): warning C4244: 'argument': conversion from 'uint64_t' to 'float', possible loss of data
-client.cpp(138): warning C4018: '<=': signed/unsigned mismatch
-  C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\include\algorithm(1480): note: see reference to function template instantiation 'auto Network::Client::Receive_PACKET_SERVER_UPDATE::<lambda_ff739b7afb998cb8774bf7863c23af3e>::operator ()<Command>(const Command &) const' being compiled
-  C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\include\algorithm(1493): note: see reference to function template instantiation '_FwdIt std::_Remove_if_unchecked<std::_List_unchecked_iterator<std::_List_val<std::_List_simple_types<Command>>>,_Pr>(_FwdIt,_FwdIt,_Pr &)' being compiled
-          with
-          [
-              _FwdIt=std::_List_unchecked_iterator<std::_List_val<std::_List_simple_types<Command>>>,
-              _Pr=Network::Client::Receive_PACKET_SERVER_UPDATE::<lambda_ff739b7afb998cb8774bf7863c23af3e>
-          ]
-  client.cpp(141): note: see reference to function template instantiation '_FwdIt std::remove_if<std::_List_iterator<std::_List_val<std::_List_simple_types<Command>>>,Network::Client::Receive_PACKET_SERVER_UPDATE::<lambda_ff739b7afb998cb8774bf7863c23af3e>>(_FwdIt,_FwdIt,_Pr)' being compiled
-          with
-          [
-              _FwdIt=std::_List_iterator<std::_List_val<std::_List_simple_types<Command>>>,
-              _Pr=Network::Client::Receive_PACKET_SERVER_UPDATE::<lambda_ff739b7afb998cb8774bf7863c23af3e>
-          ]
-  client.cpp(25): note: see reference to class template instantiation 'std::unique_ptr<sf::RenderWindow,std::default_delete<_Ty>>' being compiled
-          with
-          [
-              _Ty=sf::RenderWindow
-          ]
+﻿  bullet.cpp
+  client.cpp
+  command.cpp
   common.cpp
+  debug.cpp
+  old_interpolation_code.txt
   main.cpp
   network.cpp
   player.cpp
   server.cpp
   world.cpp
+world.cpp(45): warning C4244: 'argument': conversion from 'float' to 'int', possible loss of data
   Generating code
-  318 of 1017 functions (31.3%) were compiled, the rest were copied from previous compilation.
-    125 functions were new in current compilation
-    80 functions had inline decision re-evaluated but remain unchanged
+  All 1217 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
   Finished generating code
   CMP303.vcxproj -> C:\Users\XPS\Documents\Visual Studio 2015\Projects\CMP303_v8\CMP303\x64\Release\CMP303.exe
   CMP303.vcxproj -> C:\Users\XPS\Documents\Visual Studio 2015\Projects\CMP303_v8\CMP303\x64\Release\CMP303.pdb (Full PDB)

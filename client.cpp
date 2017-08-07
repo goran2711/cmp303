@@ -11,7 +11,7 @@ namespace Network
 {
 	namespace Client
 	{
-		constexpr int INTERPOLATION_TIME_MS = 250;
+		constexpr int INTERPOLATION_TIME_MS = 150;
 
 		// Networking
 		sf::TcpSocket gSocket;
