@@ -11,6 +11,7 @@ namespace Network
 		extern std::condition_variable gCondServerClosed;
 
 		bool StartServer(const sf::IpAddress& address, Port port);
+		void ServerTask(const sf::IpAddress& address, Port port);
 		void CloseServer();
 	}
 }

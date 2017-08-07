@@ -5,6 +5,6 @@ namespace Network
 {
 	namespace Client
 	{
-		bool StartClient(const sf::IpAddress& address, Port port);
+		bool StartClient(const sf::IpAddress& address, Port port, bool isHost);
 	}
 }

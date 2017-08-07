@@ -28,17 +28,21 @@ int main()
 
 	input = tolower(input);
 
-	bool isHost = (input == 'y' || input == 'd');
+	bool isHost = input == 'y';
 	bool isDedicated = input == 'd';
 
+	// Start server in separate thread
 	if (isHost)
 		Server::StartServer({ SERVERIP }, SERVERPORT);
 
+	// Start server in main thread
 	if (isDedicated)
-		WaitTillServerStops();
+		Server::ServerTask({ SERVERIP }, SERVERPORT);
+	// Start client
 	else
-		Client::StartClient({ SERVERIP }, SERVERPORT);
+		Client::StartClient({ SERVERIP }, SERVERPORT, isHost);
 
+	// Join server thread
 	if (isHost)
 		Server::CloseServer();
 

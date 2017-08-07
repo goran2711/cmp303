@@ -216,6 +216,9 @@ namespace Network
 
 		void ServerTask(const sf::IpAddress& address, Port port)
 		{
+			gIsServerRunning = true;
+			gNextUpdatePoint = the_clock::now() + ms(UPDATE_INTERVAL_MS);
+
 			if (!StartListening(address, port))
 				return;
 
@@ -249,8 +252,6 @@ namespace Network
 
 		bool StartServer(const sf::IpAddress& address, Port port)
 		{
-			gIsServerRunning = true;
-			gNextUpdatePoint = the_clock::now() + ms(UPDATE_INTERVAL_MS);
 			gServerThread = std::thread([&] { ServerTask(address, port); });
 
 			return true;

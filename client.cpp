@@ -30,6 +30,9 @@ namespace Network
 			STATUS_SPECTATING,
 		} gStatus;
 
+		// Only used to determine the colour this client requests from the server
+		bool gIsHost;
+
 		// Graphics
 		std::unique_ptr<sf::RenderWindow> gWindow;
 
@@ -75,7 +78,8 @@ namespace Network
 		DEF_CLIENT_SEND(PACKET_CLIENT_JOIN)
 		{
 			auto p = InitPacket(PACKET_CLIENT_JOIN);
-			p << 0xA0FFA0FF;
+			// Random hex colours
+			p << (gIsHost ? 0xA0FFA0FF : 0xFFA0A0FF);
 
 			debug << "CLIENT: Sent join request to server" << std::endl;
 			gSocket.send(p);
@@ -490,8 +494,10 @@ namespace Network
 			gIsRunning = false;
 		}
 
-		bool StartClient(const sf::IpAddress& address, Port port)
+		bool StartClient(const sf::IpAddress& address, Port port, bool isHost)
 		{
+			gIsHost = isHost;
+
 			if (!ConnectToServer(address, port))
 			{
 				debug << "CLIENT: Failed to connect to server" << std::endl;
