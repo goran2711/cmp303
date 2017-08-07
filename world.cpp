@@ -67,6 +67,7 @@ void World::RunCommand(const Command& cmd, uint8_t id, bool rec)
 	{
 		player->RunCommand(cmd, rec);
 
+		// Bound checking
 		if (player->GetPosition().x - H_PADDLE_W < 0.f)
 			player->SetX(H_PADDLE_W);
 		if (player->GetPosition().x + H_PADDLE_W > VP_WIDTH)
@@ -83,12 +84,14 @@ void World::PlayerShoot(uint8_t id)
 	Bullet newBullet;
 	newBullet.SetID(mNewEID++);
 	newBullet.SetColour(player->GetColour());
-	newBullet.SetPosition(player->GetPosition());
 
 	// If this player is on top, fire down and vice versa
 	float direction = IsPlayerTopLane(id) ? 1.f : -1.f;
 	newBullet.SetDirection({ 0.f, direction });
 
+	auto pos = player->GetPosition();
+	pos.y += 32.f * direction;
+	newBullet.SetPosition(pos);
 	mBullets.push_back(newBullet);
 }
 
@@ -100,12 +103,36 @@ void World::Update(float dt)
 
 		bullet.Update(dt);
 
-		if (bullet.GetPosition().y + H_BULLET_H < 0.f)
+		float bulletTop = bullet.GetPosition().y + H_BULLET_H;
+		float bulletBot = bullet.GetPosition().y - H_BULLET_H;
+
+		// Bound checking
+		bool isOffScreen = false;
+		if (bulletTop < 0.f || bulletBot >= VP_HEIGHT)
+			isOffScreen = true;
+
+		if (isOffScreen)
+		{
 			it = mBullets.erase(it);
-		else if (bullet.GetPosition().y - H_BULLET_H >= VP_HEIGHT)
-			it = mBullets.erase(it);
+			continue;
+		}
 		else
+		{
+			for (auto& player : mPlayers)
+			{
+				float playerTop = player.GetPosition().y + H_PADDLE_H;
+				float playerBot = player.GetPosition().y - H_PADDLE_H;
+				float playerRight = player.GetPosition().x + H_PADDLE_W;
+				float playerLeft = player.GetPosition().x - H_PADDLE_W;
+
+				float bulletRight = bullet.GetPosition().x + H_BULLET_W;
+				float bulletLeft = bullet.GetPosition().x - H_BULLET_W;
+
+				if ((bulletLeft > playerLeft && bulletRight < playerRight) && bulletBot < playerTop)
+					std::cout << "Collision\n";
+			}
 			++it;
+		}
 	}
 }
 

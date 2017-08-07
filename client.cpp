@@ -20,6 +20,7 @@ namespace Network
 		bool gIsPredicting = true;
 		bool gIsReconciling = true;
 		bool gIsInterpolating = true;
+		bool gIsInterpolatingBullets = false;
 
 		enum ClientStatus
 		{
@@ -277,7 +278,8 @@ namespace Network
 							case Key::Escape:
 								return false;
 
-							// Control networking strategies
+								// RECODE: Messy and repetitive
+								// Control networking strategies
 							case Key::F1:
 							{
 								gIsPredicting = !gIsPredicting;
@@ -293,6 +295,7 @@ namespace Network
 							case Key::F2:
 							{
 								gIsReconciling = !gIsReconciling;
+
 								if (gIsReconciling && !gIsPredicting)
 								{
 									gIsPredicting = true;
@@ -305,6 +308,24 @@ namespace Network
 							{
 								gIsInterpolating = !gIsInterpolating;
 								debug << "Interpolation: " << std::boolalpha << gIsInterpolating << std::endl;
+
+								if (gIsInterpolatingBullets)
+								{
+									gIsInterpolatingBullets = false;
+									debug << "Interpolate bullets (broken): " << std::boolalpha << gIsInterpolatingBullets << std::endl;
+								}
+							}
+							break;
+							case Key::F4:
+							{
+								gIsInterpolatingBullets = !gIsInterpolatingBullets;
+								debug << "Interpolate bullets (broken): " << std::boolalpha << gIsInterpolatingBullets << std::endl;
+
+								if (!gIsInterpolating && gIsInterpolatingBullets)
+								{
+									gIsInterpolating = true;
+									debug << "Interpolation: " << std::boolalpha << gIsInterpolating << std::endl;
+								}
 							}
 							break;
 							case Key::Space:
@@ -392,17 +413,21 @@ namespace Network
 				}
 			}
 
-			for (const auto& bulletFrom : from.snapshot.GetBullets())
+			// NOTE: Broken + repetitive
+			if (gIsInterpolatingBullets)
 			{
-				for (const auto& bulletTo : to.snapshot.GetBullets())
+				for (const auto& bulletFrom : from.snapshot.GetBullets())
 				{
-					if (bulletFrom.GetID() == bulletTo.GetID())
+					for (const auto& bulletTo : to.snapshot.GetBullets())
 					{
-						auto bulletReal = gWorld.GetBullet(bulletFrom.GetID());
-						if (bulletReal)
+						if (bulletFrom.GetID() == bulletTo.GetID())
 						{
-							sf::Vector2f newPos = (bulletTo.GetPosition() - bulletFrom.GetPosition()) * alpha + bulletFrom.GetPosition();
-							bulletReal->SetPosition(newPos);
+							auto bulletReal = gWorld.GetBullet(bulletFrom.GetID());
+							if (bulletReal)
+							{
+								sf::Vector2f newPos = (bulletTo.GetPosition() - bulletFrom.GetPosition()) * alpha + bulletFrom.GetPosition();
+								bulletReal->SetPosition(newPos);
+							}
 						}
 					}
 				}
