@@ -20,8 +20,8 @@ int main()
 
 	input = tolower(input);
 
-	bool isHost = input == 'y';
-	bool isDedicated = input == 'd';
+	bool isHost = (input == 'y');
+	bool isDedicated = (input == 'd');
 
 	// Start server in separate thread
 	if (isHost)

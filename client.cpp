@@ -11,6 +11,7 @@ namespace Network
 {
 	namespace Client
 	{
+		// Global variables ///////
 		constexpr int INTERPOLATION_TIME_MS = 150;
 
 		// Networking
@@ -21,7 +22,6 @@ namespace Network
 		bool gIsReconciling = true;
 		bool gIsInterpolating = true;
 		bool gIsInterpolatingBullets = false;
-
 
 		// Only used to determine the colour this client requests from the server
 		bool gIsHost;
@@ -40,31 +40,10 @@ namespace Network
 
 		bool gViewInverted = false;
 
-		void InitializeWindow(const char* title)
-		{
-			gWindow = std::make_unique<sf::RenderWindow>(sf::VideoMode(VP_WIDTH, VP_HEIGHT), title);
-			gWindow->setFramerateLimit(30);
-			gWindow->requestFocus();
-		}
-
-		uint64_t GetRenderTime()
-		{
-			return (gElapsedTime > INTERPOLATION_TIME_MS) ? gElapsedTime - INTERPOLATION_TIME_MS : 0;
-		}
-
-		void DeleteOldSnapshots(uint64_t renderTime)
-		{
-			for (auto it = gSnapshots.rbegin(); it != gSnapshots.rend(); ++it)
-			{
-				// If this snapshot came before our render time
-				if (it->clientTime <= renderTime)
-				{
-					// Start deleting from this point
-					gSnapshots.erase(gSnapshots.begin(), (++it).base());
-					break;
-				}
-			}
-		}
+		// Forward declarations
+		void InitializeWindow(const char* title);
+		uint64_t GetRenderTime();
+		void DeleteOldSnapshots(uint64_t renderTime);
 
 		// SEND FUNCTIONS //////////////////////////////////
 
@@ -202,6 +181,34 @@ namespace Network
 			RECV(PACKET_SERVER_UPDATE),
 			nullptr,						// PACKET_CLIENT_SHOOT
 		};
+
+		// Client logic ///////
+
+		void InitializeWindow(const char* title)
+		{
+			gWindow = std::make_unique<sf::RenderWindow>(sf::VideoMode(VP_WIDTH, VP_HEIGHT), title);
+			gWindow->setFramerateLimit(30);
+			gWindow->requestFocus();
+		}
+
+		uint64_t GetRenderTime()
+		{
+			return (gElapsedTime > INTERPOLATION_TIME_MS) ? gElapsedTime - INTERPOLATION_TIME_MS : 0;
+		}
+
+		void DeleteOldSnapshots(uint64_t renderTime)
+		{
+			for (auto it = gSnapshots.rbegin(); it != gSnapshots.rend(); ++it)
+			{
+				// If this snapshot came before our render time
+				if (it->clientTime <= renderTime)
+				{
+					// Start deleting from this point
+					gSnapshots.erase(gSnapshots.begin(), (++it).base());
+					break;
+				}
+			}
+		}
 
 		bool ConnectToServer(const sf::IpAddress& address, Port port)
 		{

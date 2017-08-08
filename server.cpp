@@ -10,6 +10,7 @@ namespace Network
 {
 	namespace Server
 	{
+		// Global Varaibles //////
 		constexpr int MAX_CLIENTS = 12;
 
 		// Time to wait at socket selector
@@ -137,6 +138,8 @@ namespace Network
 				nullptr,					// PACKET_SERVER_UPDATE
 				RECV(PACKET_CLIENT_SHOOT),	
 		};
+
+		// Server logic ///////
 
 		bool StartListening(const sf::IpAddress& address, Port port)
 		{

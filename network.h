@@ -2,6 +2,8 @@
 #include <SFML/Network.hpp>
 #include <memory>
 
+// Network.h: Contains code that is shared between Client and Server
+
 #define DEF_SERVER_RECV(type)		void Receive_ ## type ## (ConnectionPtr connection, sf::Packet& p)
 #define DEF_SERVER_SEND(type)		void Send_ ## type ## (ConnectionPtr connection)
 
