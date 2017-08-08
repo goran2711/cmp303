@@ -2,6 +2,7 @@
 #include <list>
 #include <functional>
 #include <SFML/Graphics.hpp>
+#include <iomanip>
 #include "world.h"
 #include "command.h"
 #include "common.h"
@@ -69,6 +70,13 @@ namespace Network
 		DEF_CLIENT_SEND(PACKET_CLIENT_SHOOT)
 		{
 			auto p = InitPacket(PACKET_CLIENT_SHOOT);
+
+			gConnection.Send(p);
+		}
+
+		DEF_CLIENT_SEND(PACKET_CLIENT_PING)
+		{
+			auto p = InitPacket(PACKET_CLIENT_PING);
 
 			gConnection.Send(p);
 		}
@@ -180,15 +188,23 @@ namespace Network
 			nullptr,						// PACKET_CLIENT_CMD
 			RECV(PACKET_SERVER_UPDATE),
 			nullptr,						// PACKET_CLIENT_SHOOT
+			nullptr,						// PACKET_CLIENT_PING
 		};
 
 		// Client logic ///////
 
 		void InitializeWindow(const char* title)
 		{
+			debug << "CLIENT: Initialising SFML window..." << std::endl;
 			gWindow = std::make_unique<sf::RenderWindow>(sf::VideoMode(VP_WIDTH, VP_HEIGHT), title);
 			gWindow->setFramerateLimit(30);
 			gWindow->requestFocus();
+
+			debug << "\nAll options except bullet interpolation are enabled by default\n" <<
+				"F1: Client-side prediction\n" <<
+				"F2: Server reconciliation\n" <<
+				"F3: Interpolation\n" <<
+				"F4: Bullet interpolation (Broken)" << std::endl;
 		}
 
 		uint64_t GetRenderTime()
@@ -263,23 +279,23 @@ namespace Network
 					case sf::Event::Closed:
 						return false;
 					case sf::Event::KeyPressed:
+					{
+						bool changedOptions = false;
+
 						switch (event.key.code)
 						{
 							case Key::Escape:
 								return false;
 
-								// RECODE: Messy and repetitive
-								// Control networking strategies
+							// Control networking strategies
 							case Key::F1:
 							{
 								gIsPredicting = !gIsPredicting;
-								debug << "Prediction: " << std::boolalpha << gIsPredicting << std::endl;
 
 								if (gIsReconciling)
-								{
 									gIsReconciling = false;
-									debug << "Reconciliation: " << std::boolalpha << gIsReconciling << std::endl;
-								}
+
+								changedOptions = true;
 							}
 							break;
 							case Key::F2:
@@ -287,42 +303,48 @@ namespace Network
 								gIsReconciling = !gIsReconciling;
 
 								if (gIsReconciling && !gIsPredicting)
-								{
 									gIsPredicting = true;
-									debug << "Prediction: " << std::boolalpha << gIsPredicting << std::endl;
-								}
-								debug << "Reconciliation: " << std::boolalpha << gIsReconciling << std::endl;
+
+								changedOptions = true;
 							}
 							break;
 							case Key::F3:
 							{
 								gIsInterpolating = !gIsInterpolating;
-								debug << "Interpolation: " << std::boolalpha << gIsInterpolating << std::endl;
 
 								if (gIsInterpolatingBullets)
-								{
 									gIsInterpolatingBullets = false;
-									debug << "Interpolate bullets (broken): " << std::boolalpha << gIsInterpolatingBullets << std::endl;
-								}
+
+								changedOptions = true;
 							}
 							break;
 							case Key::F4:
 							{
 								gIsInterpolatingBullets = !gIsInterpolatingBullets;
-								debug << "Interpolate bullets (broken): " << std::boolalpha << gIsInterpolatingBullets << std::endl;
 
 								if (!gIsInterpolating && gIsInterpolatingBullets)
-								{
 									gIsInterpolating = true;
-									debug << "Interpolation: " << std::boolalpha << gIsInterpolating << std::endl;
-								}
+
+								changedOptions = true;
 							}
 							break;
 							case Key::Space:
 								SEND(PACKET_CLIENT_SHOOT)();
 								break;
 						}
-						break;
+
+						if (changedOptions)
+						{
+							constexpr int FILL_W = 32;
+
+							debug << std::boolalpha << '\n' <<
+								std::setw(FILL_W) << std::left << "Predicting: " << gIsPredicting << '\n' <<
+								std::setw(FILL_W) << std::left << "Reconciliating: " << gIsReconciling << '\n' <<
+								std::setw(FILL_W) << std::left << "Interpolating: " << gIsInterpolating << '\n' <<
+								std::setw(FILL_W) << std::left << "Interpolating bullets (broken): " << gIsInterpolatingBullets << std::endl;
+						}
+					}
+					break;
 				}
 			}
 

@@ -14,7 +14,7 @@ public:
 
 	constexpr static float BULLET_SPEED = 400.f;
 
-	void Update(float dt);
+	void Update(uint64_t dt);
 
 	void SetID(uint32_t id) { mID = id; }
 	void SetColour(uint32_t colour) { mColour = colour; }

@@ -40,6 +40,8 @@ namespace Network
 
 		uint8_t pid;
 		bool active = false;
+		uint32_t latency;
+		uint64_t sentPingRequestTime;
 		ConnectionStatus status = STATUS_NONE;
 		sf::TcpSocket socket;
 	};
@@ -55,6 +57,7 @@ namespace Network
 		PACKET_CLIENT_CMD,			// Packet containing a movement command from a client
 		PACKET_SERVER_UPDATE,		// Packet from the server containing the current state of the game
 		PACKET_CLIENT_SHOOT,		// Request from the client to spawn a bullet
+		PACKET_CLIENT_PING,			// Sent by the client when the server request it to calculate latency
 		PACKET_END,
 	};
 

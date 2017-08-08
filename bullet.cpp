@@ -1,9 +1,9 @@
 #include "bullet.h"
 #include "network.h"
 
-void Bullet::Update(float dt)
+void Bullet::Update(uint64_t dt)
 {
-	mPosition += mDirection * BULLET_SPEED * dt;
+	mPosition += mDirection * BULLET_SPEED * (dt / 1000.f);
 }
 
 sf::Packet& operator<<(sf::Packet& p, const Bullet& b)

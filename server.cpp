@@ -128,6 +128,15 @@ namespace Network
 			gWorld.PlayerShoot(connection->pid);
 		}
 
+		DEF_SERVER_RECV(PACKET_CLIENT_PING)
+		{
+			if (connection->status != STATUS_PLAYING)
+				return;
+
+			connection->latency = gElapsedTime - connection->sentPingRequestTime;
+			std::cout << "SERVER: Client #" << (int) connection->pid << " latency: " << connection->latency << std::endl;
+		}
+
 		using ServerReceiveCallback = std::function<void(ConnectionPtr, sf::Packet&)>;
 		const ServerReceiveCallback _receivePacket[] = {
 				RECV(PACKET_CLIENT_JOIN),
@@ -136,7 +145,8 @@ namespace Network
 				nullptr,					// PACKET_SERVER_FULL
 				RECV(PACKET_CLIENT_CMD),
 				nullptr,					// PACKET_SERVER_UPDATE
-				RECV(PACKET_CLIENT_SHOOT),	
+				RECV(PACKET_CLIENT_SHOOT),
+				RECV(PACKET_CLIENT_PING),
 		};
 
 		// Server logic ///////
@@ -232,6 +242,21 @@ namespace Network
 			}
 		}
 
+		void UpdateClients()
+		{
+			if (the_clock::now() >= gNextUpdatePoint)
+			{
+				WorldSnapshot snapshot;
+				snapshot.snapshot = gWorld;
+				snapshot.serverTime = gElapsedTime;
+
+				for (auto& connection : gConnections)
+					SEND(PACKET_SERVER_UPDATE)(connection, snapshot);
+
+				gNextUpdatePoint = the_clock::now() + ms(UPDATE_INTERVAL_MS);
+			}
+		}
+
 		void ServerTask(const sf::IpAddress& address, Port port)
 		{
 			gIsServerRunning = true;
@@ -240,7 +265,7 @@ namespace Network
 			if (!StartListening(address, port))
 				return;
 
-			float dt = 0.f;
+			uint64_t dt = 0.f;
 			sf::Clock deltaClock;
 			while (gIsServerRunning)
 			{
@@ -248,20 +273,10 @@ namespace Network
 
 				gWorld.Update(dt);
 
-				// STATE UPDATE
-				if (the_clock::now() >= gNextUpdatePoint)
-				{
-					WorldSnapshot snapshot;
-					snapshot.snapshot = gWorld;
-					snapshot.serverTime = gElapsedTime;
+				UpdateClients();
 
-					for (auto& connection : gConnections)
-						SEND(PACKET_SERVER_UPDATE)(connection, snapshot);
-
-					gElapsedTime += UPDATE_INTERVAL_MS;
-					gNextUpdatePoint = the_clock::now() + ms(UPDATE_INTERVAL_MS);
-				}
-				dt = deltaClock.restart().asSeconds();
+				gElapsedTime += dt;
+				dt = deltaClock.restart().asMilliseconds();
 			}
 
 			gIsServerRunning = false;
