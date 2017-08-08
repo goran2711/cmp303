@@ -21,7 +21,6 @@ namespace Network
 		// Thread stuff
 		std::thread gServerThread;
 		std::atomic<bool> gIsServerRunning;
-		std::condition_variable gCondServerClosed;
 
 		// Networking
 		sf::TcpListener gListener;
@@ -263,7 +262,6 @@ namespace Network
 			}
 
 			gIsServerRunning = false;
-			gCondServerClosed.notify_all();
 		}
 
 		bool StartServer(const sf::IpAddress& address, Port port)

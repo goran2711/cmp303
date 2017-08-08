@@ -9,16 +9,8 @@
 #include "debug.h"
 using namespace Network;
 
-#define SERVERIP	"127.0.0.1"
-#define SERVERPORT	5555
-
-void WaitTillServerStops()
-{
-	std::mutex dummyMutex;
-	std::unique_lock<std::mutex> dummyLock(dummyMutex);
-
-	Server::gCondServerClosed.wait(dummyLock, [&] { return !Server::gIsServerRunning.load(); });
-}
+constexpr char SERVERIP[] = "127.0.0.1";
+constexpr Port SERVERPORT = 5555;
 
 int main()
 {
