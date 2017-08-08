@@ -44,12 +44,15 @@ namespace Network
 			auto p = InitPacket(PACKET_SERVER_WELCOME);
 			p << connection->pid << rot;
 
+			connection->status = STATUS_PLAYING;
 			connection->Send(p);
 		}
 
 		DEF_SERVER_SEND(PACKET_SERVER_SPECTATOR)
 		{
 			auto p = InitPacket(PACKET_SERVER_SPECTATOR);
+
+			connection->status = STATUS_SPECTATING;
 			connection->Send(p);
 		}
 
@@ -63,6 +66,9 @@ namespace Network
 
 		DEF_SEND_PARAM(PACKET_SERVER_UPDATE)(ConnectionPtr connection, const WorldSnapshot& snapshot)
 		{
+			if (connection->status == STATUS_JOINING || connection->status == STATUS_NONE)
+				return;
+
 			auto p = InitPacket(PACKET_SERVER_UPDATE);
 			p << snapshot;
 
@@ -73,6 +79,9 @@ namespace Network
 
 		DEF_SERVER_RECV(PACKET_CLIENT_JOIN)
 		{
+			if (connection->status != STATUS_JOINING)
+				return;
+
 			uint32_t colour;
 			p >> colour;
 
@@ -101,6 +110,9 @@ namespace Network
 
 		DEF_SERVER_RECV(PACKET_CLIENT_CMD)
 		{
+			if (connection->status != STATUS_PLAYING)
+				return;
+
 			uint8_t pid;
 			Command cmd;
 			p >> pid >> cmd;
@@ -110,6 +122,9 @@ namespace Network
 
 		DEF_SERVER_RECV(PACKET_CLIENT_SHOOT)
 		{
+			if (connection->status != STATUS_PLAYING)
+				return;
+
 			gWorld.PlayerShoot(connection->pid);
 		}
 
@@ -150,8 +165,11 @@ namespace Network
 
 			debug << "SERVER: Accepted a new client -- " << gConnections.size() << " clients connected" << std::endl;
 
+			// TODO: Set timeout, so connection is dropped if the client does not send a PACKET_CLIENT_JOIN in time
+
 			newConnection->active = true;
-			newConnection->socket.setBlocking(false);
+			newConnection->status = STATUS_JOINING;
+			newConnection->SetBlocking(false);
 			gSelector.add(newConnection->socket);
 		}
 
@@ -164,7 +182,7 @@ namespace Network
 			if (gWorld.PlayerExists(connection->pid))
 				gWorld.RemovePlayer(connection->pid);
 
-			connection->socket.disconnect();
+			connection->Disconnect();
 
 			return gConnections.erase(std::remove(gConnections.begin(), gConnections.end(), connection), gConnections.end());
 		}
@@ -181,9 +199,7 @@ namespace Network
 				p >> type;
 
 				if (type < PACKET_END && _receivePacket[type] != nullptr && connection->active)
-				{
 					_receivePacket[type](connection, p);
-				}
 			}
 		}
 

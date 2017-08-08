@@ -14,7 +14,7 @@ namespace Network
 		constexpr int INTERPOLATION_TIME_MS = 150;
 
 		// Networking
-		sf::TcpSocket gSocket;
+		Connection gConnection;
 		bool gIsRunning;
 
 		bool gIsPredicting = true;
@@ -22,13 +22,6 @@ namespace Network
 		bool gIsInterpolating = true;
 		bool gIsInterpolatingBullets = false;
 
-		enum ClientStatus
-		{
-			STATUS_NONE,
-			STATUS_JOINING,
-			STATUS_PLAYING,
-			STATUS_SPECTATING,
-		} gStatus;
 
 		// Only used to determine the colour this client requests from the server
 		bool gIsHost;
@@ -82,8 +75,8 @@ namespace Network
 			p << (gIsHost ? 0xA0FFA0FF : 0xFFA0A0FF);
 
 			debug << "CLIENT: Sent join request to server" << std::endl;
-			gSocket.send(p);
-			gStatus = STATUS_JOINING;
+			gConnection.Send(p);
+			gConnection.status = STATUS_JOINING;
 		}
 
 		DEF_SEND_PARAM(PACKET_CLIENT_CMD)(const Command& cmd)
@@ -91,14 +84,14 @@ namespace Network
 			auto p = InitPacket(PACKET_CLIENT_CMD);
 			p << gMyID << cmd;
 
-			gSocket.send(p);
+			gConnection.Send(p);
 		}
 
 		DEF_CLIENT_SEND(PACKET_CLIENT_SHOOT)
 		{
 			auto p = InitPacket(PACKET_CLIENT_SHOOT);
 
-			gSocket.send(p);
+			gConnection.Send(p);
 		}
 
 		// RECEIVE FUNCTIONS ///////////////////////////////
@@ -125,7 +118,7 @@ namespace Network
 				gViewInverted = true;
 			}
 
-			gStatus = STATUS_PLAYING;
+			gConnection.status = STATUS_PLAYING;
 			return true;
 		}
 
@@ -135,7 +128,7 @@ namespace Network
 
 			InitializeWindow("Spectating");
 
-			gStatus = STATUS_SPECTATING;
+			gConnection.status = STATUS_SPECTATING;
 			return true;
 		}
 
@@ -151,7 +144,7 @@ namespace Network
 			// We don't care about state updates
 			// if we are still waiting to learn if
 			// we can join the server
-			if (gStatus == STATUS_JOINING)
+			if (gConnection.status == STATUS_JOINING)
 				return true;
 
 			WorldSnapshot snapshot;
@@ -213,10 +206,10 @@ namespace Network
 		bool ConnectToServer(const sf::IpAddress& address, Port port)
 		{
 			debug << "CLIENT: Connecting to " << address.toString() << ':' << port << std::endl;
-			if (gSocket.connect(address, port) != Status::Done)
+			if (!gConnection.Connect(address, port))
 				return false;
 
-			gSocket.setBlocking(false);
+			gConnection.SetBlocking(false);
 
 			SEND(PACKET_CLIENT_JOIN)();
 			return true;
@@ -224,8 +217,9 @@ namespace Network
 
 		void Disconnect()
 		{
-			// TODO: Notify server
-			gSocket.disconnect();
+			// TODO: Notify server that we disconnected intentionally
+
+			gConnection.Disconnect();
 		}
 
 		bool ReceiveFromServer()
@@ -233,18 +227,8 @@ namespace Network
 			while (true)
 			{
 				sf::Packet p;
-				auto ret = gSocket.receive(p);
-
-				switch (ret)
-				{
-					case Status::Disconnected:
-						debug << "CLIENT: Lost connection to server" << std::endl;
-					case Status::Error:
-					case Status::Partial:
-						return false;
-					case Status::NotReady:
-						return true;
-				}
+				if (!gConnection.Receive(p))
+					break;
 
 				uint8_t type;
 				p >> type;
@@ -256,12 +240,7 @@ namespace Network
 				}
 			}
 
-			return true;
-		}
-
-		bool WaitForSelector()
-		{
-			if (!ReceiveFromServer())
+			if (!gConnection.active)
 				return false;
 
 			return true;
@@ -449,10 +428,10 @@ namespace Network
 			while (gIsRunning)
 			{
 				// Networking
-				if (!WaitForSelector())
+				if (!ReceiveFromServer())
 					break;
 
-				switch (gStatus)
+				switch (gConnection.status)
 				{
 					case STATUS_JOINING:
 						continue;

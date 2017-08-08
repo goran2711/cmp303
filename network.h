@@ -18,13 +18,27 @@ namespace Network
 	using Status = sf::Socket::Status;
 	using Port = unsigned short;
 
+	enum ConnectionStatus
+	{
+		STATUS_NONE,
+		STATUS_JOINING,
+		STATUS_PLAYING,
+		STATUS_SPECTATING,
+	};
+
 	struct Connection
 	{
+		bool Connect(const sf::IpAddress& ip, Port port);
+		void Disconnect();
+
 		void Send(sf::Packet& p);
 		bool Receive(sf::Packet& p);
 
+		void SetBlocking(bool val);
+
 		uint8_t pid;
 		bool active = false;
+		ConnectionStatus status = STATUS_NONE;
 		sf::TcpSocket socket;
 	};
 
@@ -60,7 +74,7 @@ sf::Packet& operator<<(sf::Packet& p, const std::vector<T>& v)
 }
 
 template<typename T>
-sf::Packet& operator>>(sf::Packet& p, std::vector<T>& v)
+sf::Packet& operator >> (sf::Packet& p, std::vector<T>& v)
 {
 	size_t size;
 	p >> size;

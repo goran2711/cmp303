@@ -2,6 +2,20 @@
 
 namespace Network
 {
+	bool Connection::Connect(const sf::IpAddress & ip, Port port)
+	{
+		if (socket.connect(ip, port) != Status::Done)
+			return false;
+
+		active = true;
+		return true;
+	}
+
+	void Connection::Disconnect()
+	{
+		socket.disconnect();
+	}
+
 	void Connection::Send(sf::Packet& p)
 	{
 		Status ret;
@@ -38,6 +52,11 @@ namespace Network
 		}
 
 		return true;
+	}
+
+	void Connection::SetBlocking(bool val)
+	{
+		socket.setBlocking(val);
 	}
 
 	sf::Packet InitPacket(PacketType type)
