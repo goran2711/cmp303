@@ -1,17 +1,8 @@
-﻿  bullet.cpp
-  client.cpp
-  command.cpp
-  common.cpp
-  debug.cpp
-  old_interpolation_code.txt
-  main.cpp
-  network.cpp
-  player.cpp
-  server.cpp
-  world.cpp
-world.cpp(45): warning C4244: 'argument': conversion from 'float' to 'int', possible loss of data
+﻿  client.cpp
   Generating code
-  All 1217 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  56 of 1446 functions ( 3.9%) were compiled, the rest were copied from previous compilation.
+    0 functions were new in current compilation
+    19 functions had inline decision re-evaluated but remain unchanged
   Finished generating code
   CMP303.vcxproj -> C:\Users\XPS\Documents\Visual Studio 2015\Projects\CMP303_v8\CMP303\x64\Release\CMP303.exe
   CMP303.vcxproj -> C:\Users\XPS\Documents\Visual Studio 2015\Projects\CMP303_v8\CMP303\x64\Release\CMP303.pdb (Full PDB)

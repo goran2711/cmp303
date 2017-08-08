@@ -1,6 +1,8 @@
 #pragma once
 #include <SFML/System.hpp>
 
+// bullet.h: Represents a bullet (a lot in common with Player. Should have used polymorphism)
+
 namespace sf
 {
 	class Packet;

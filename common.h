@@ -2,6 +2,8 @@
 #include <chrono>
 #include <SFML/Window.hpp>
 
+// common.h: Commonly used variables and shorthands
+
 constexpr unsigned int VP_WIDTH = 800;
 constexpr unsigned int VP_HEIGHT = 600;
 
@@ -27,3 +29,5 @@ using Key = sf::Keyboard::Key;
 using the_clock = std::chrono::high_resolution_clock;
 using time_point = std::chrono::time_point<the_clock>;
 using ms = std::chrono::milliseconds;
+
+#define to_ms(s, e) std::chrono::duration_cast<ms>(e - s)

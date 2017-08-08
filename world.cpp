@@ -18,6 +18,7 @@
 		window.draw(shape);
 	}
 
+	// NOTE: Objects should really just store their own size, or have their own renderable shapes
 	shape.setSize({ BULLET_W, BULLET_H });
 	shape.setOrigin({ H_BULLET_W, H_BULLET_H });
 	for (const auto& bullet : world.mBullets)
@@ -45,6 +46,7 @@ void World::AddBullet(const Bullet & bullet)
 	mBullets.push_back(bullet);
 }
 
+// Try to add a new player to the game
 bool World::AddPlayer(Player& player)
 {
 	if (mPlayers.size() >= MAX_PLAYERS)
@@ -59,11 +61,12 @@ bool World::AddPlayer(Player& player)
 
 	mPlayers.push_back(player);
 
+	// Determine spawn position
 	float lane = LANE_TOP;
 	if (IsLaneOccupied(lane))
 		lane = LANE_BOTTOM;
 
-	mPlayers.back().SetPosition({ SPAWN_POS, lane });
+	mPlayers.back().SetPosition({ SPAWN_POS_X, lane });
 
 	return true;
 }
@@ -73,11 +76,10 @@ bool World::RemovePlayer(uint8_t id)
 	auto hasPID = [id](const auto& player) { return player.GetID() == id; };
 
 	auto it = mPlayers.erase(std::remove_if(mPlayers.begin(), mPlayers.end(), hasPID));
-	debug << "mPlayers.size() == " << mPlayers.size() << std::endl;
 	return it != mPlayers.end();
 }
 
-void World::OverwritePlayers(const World & other)
+void World::UpdateWorld(const World & other)
 {
 	mPlayers = other.mPlayers;
 	mServerBullets = other.mBullets;
@@ -146,28 +148,9 @@ void World::Update(uint64_t dt)
 			isOffScreen = true;
 
 		if (isOffScreen)
-		{
 			it = mBullets.erase(it);
-			continue;
-		}
 		else
-		{
-			// Oh dear, I forgot how to do AABB
-		//	for (auto& player : mPlayers)
-		//	{
-		//		float playerTop = player.GetPosition().y + H_PADDLE_H;
-		//		float playerBot = player.GetPosition().y - H_PADDLE_H;
-		//		float playerRight = player.GetPosition().x + H_PADDLE_W;
-		//		float playerLeft = player.GetPosition().x - H_PADDLE_W;
-
-		//		float bulletRight = bullet.GetPosition().x + H_BULLET_W;
-		//		float bulletLeft = bullet.GetPosition().x - H_BULLET_W;
-
-		//		if ((bulletLeft > playerLeft && bulletRight < playerRight) && bulletBot < playerTop)
-		//			std::cout << "Collision\n";
-		//	}
 			++it;
-		}
 	}
 }
 

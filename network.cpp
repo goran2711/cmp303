@@ -62,6 +62,9 @@ namespace Network
 	sf::Packet InitPacket(PacketType type)
 	{
 		sf::Packet packet;
+
+		// SFML packets do not play nice with enums
+		// ... I won't need more than 255 packet types anyway
 		packet << sf::Uint8(type);
 		return packet;
 	}

@@ -39,6 +39,7 @@ namespace Network
 
 		void SetBlocking(bool val);
 
+		// PlayerID
 		uint8_t pid;
 		bool active = false;
 		ms latency;
@@ -55,8 +56,8 @@ namespace Network
 		PACKET_SERVER_SPECTATOR,	// Packet letting the client know they can join as a spectator
 		PACKET_SERVER_FULL,			// Packet letting the client know it is full
 		PACKET_CLIENT_CMD,			// Packet containing a movement command from a client
-		PACKET_SERVER_PING,			// 
-		PACKET_CLIENT_PING,			// Sent by the client when the server request it to calculate latency
+		PACKET_SERVER_PING,			// Ping request(and response; dual-purpose) from the server to the client
+		PACKET_CLIENT_PING,			// Ping response from the client
 		PACKET_SERVER_UPDATE,		// Packet from the server containing the current state of the game
 		PACKET_CLIENT_SHOOT,		// Request from the client to spawn a bullet
 		PACKET_SERVER_SHOOT,		// Packet from server informing clients that another client has shot

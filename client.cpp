@@ -45,7 +45,7 @@ namespace Network
 		};
 
 		// Cache of bullets the server has told us about, but we are not
-		// ready to spawn yet because of interpolation
+		// ready to show yet because of interpolation
 		std::vector<FutureBullet> gIncomingBullets;
 
 		// Forward declarations
@@ -57,6 +57,11 @@ namespace Network
 
 		DEF_CLIENT_SEND(PACKET_CLIENT_JOIN)
 		{
+			//// Request to join a server
+
+			if (gConnection.status != STATUS_NONE)
+				return;
+
 			auto p = InitPacket(PACKET_CLIENT_JOIN);
 
 			debug << "CLIENT: Sent join request to server" << std::endl;
@@ -66,6 +71,12 @@ namespace Network
 
 		DEF_SEND_PARAM(PACKET_CLIENT_CMD)(const Command& cmd)
 		{
+			//// Send a movement command to the server
+			// cmd: Movement command
+
+			if (gConnection.status != STATUS_PLAYING)
+				return;
+
 			auto p = InitPacket(PACKET_CLIENT_CMD);
 			p << cmd;
 
@@ -74,6 +85,13 @@ namespace Network
 
 		DEF_SEND_PARAM(PACKET_CLIENT_PING)(uint64_t serverTime)
 		{
+			//// Respond to the server's ping request
+			// serverTime: The server's timestamp
+			// gElapsedTime.count(): The client's timestamp (server will be responding to us as well)
+
+			if (gConnection.status != STATUS_PLAYING && gConnection.status != STATUS_SPECTATING)
+				return;
+
 			auto p = InitPacket(PACKET_CLIENT_PING);
 			p << serverTime << gElapsedTime.count();
 
@@ -82,6 +100,12 @@ namespace Network
 
 		DEF_CLIENT_SEND(PACKET_CLIENT_SHOOT)
 		{
+			//// Request to shoot a bullet
+
+			// A spectator can trigger this, so we make sure we are actually a player
+			if (gConnection.status != STATUS_PLAYING)
+				return;
+
 			auto p = InitPacket(PACKET_CLIENT_SHOOT);
 
 			gWorld.PlayerShoot(gMyID);
@@ -94,6 +118,13 @@ namespace Network
 
 		DEF_CLIENT_RECV(PACKET_SERVER_WELCOME)
 		{
+			//// The server has accepted us as a player
+			// gMyID: The ID we were assigned by the server
+			// viewRotation: How many degrees we should rotate our view (player should always see themself on the bottom of the screen)
+
+			if (gConnection.status != STATUS_JOINING)
+				return true;
+
 			float viewRotation;
 			p >> gMyID >> viewRotation;
 
@@ -103,6 +134,7 @@ namespace Network
 			sprintf_s(title, "Client #%d", gMyID);
 			InitializeWindow(title);
 
+			// Rotate our view so that we appear on the bottom
 			if (viewRotation != 0.f)
 			{
 				sf::View view = gWindow->getView();
@@ -118,6 +150,11 @@ namespace Network
 
 		DEF_CLIENT_RECV(PACKET_SERVER_SPECTATOR)
 		{
+			//// The server has accpted us as a spectator, we will not be able to influence the game
+
+			if (gConnection.status != STATUS_JOINING)
+				return true;
+
 			debug << "CLIENT: No more available player slots; we are a spectator" << std::endl;
 
 			InitializeWindow("Spectating");
@@ -128,6 +165,11 @@ namespace Network
 
 		DEF_CLIENT_RECV(PACKET_SERVER_FULL)
 		{
+			//// The server is full, and we will be disconnected
+
+			if (gConnection.status != STATUS_JOINING)
+				return true;
+
 			debug << "CLIENT: Could not join server because it is full" << std::endl;
 
 			return false;
@@ -135,6 +177,14 @@ namespace Network
 
 		DEF_CLIENT_RECV(PACKET_SERVER_PING)
 		{
+			//// The server has requested or responded to a ping request
+			// pingBack: if true, we will return the server's timestamp, along with our own
+			//			 if false, the timestamp is our own, and we will calculate the latency
+			// timestamp: either the server's own gElapsedTime, or the client's gElapsedTime being sent back
+
+			if (gConnection.status != STATUS_PLAYING && gConnection.status != STATUS_SPECTATING)
+				return true;
+
 			bool pingBack = false;
 			uint64_t timestamp;
 			p >> pingBack >> timestamp;
@@ -142,6 +192,7 @@ namespace Network
 			// We have been asked to ping back, so timestamp is the server's timestamp
 			if (pingBack)
 				SEND(PACKET_CLIENT_PING)(timestamp);
+			// Calculate latency
 			else
 				gConnection.latency = gElapsedTime - ms(timestamp);
 
@@ -150,53 +201,56 @@ namespace Network
 
 		DEF_CLIENT_RECV(PACKET_SERVER_UPDATE)
 		{
+			//// A state update from the server
+			// snapshot: The server's World object, along with timestamps
+
 			// We don't care about state updates
 			// if we are still waiting to learn if
 			// we can join the server
 			if (gConnection.status == STATUS_JOINING)
 				return true;
 
-			bool ping = false;
 			WorldSnapshot snapshot;
 			p >> snapshot;
 
-			// Overwrite last snapshot if we receive two snapshots in the same frame
+			// Only create a new snapshot if there is not one there already, or we did not
+			// receive multiple snapshots in the same frame
 			if (gSnapshots.empty() || gSnapshots.back().clientTime != gElapsedTime.count())
 				gSnapshots.push_back(snapshot);
 
 			gSnapshots.back().clientTime = gElapsedTime.count();
 
-			// Delete old snapshots
-			uint64_t renderTime = GetRenderTime();
-
 			// Delete old (irrelevant) snapshots
+			uint64_t renderTime = GetRenderTime();
 			DeleteOldSnapshots(renderTime);
 
-			// Update world
-			gWorld.OverwritePlayers(gSnapshots.back().snapshot);
+			// Set our simulation to be the same as the ser
+			gWorld.UpdateWorld(gSnapshots.back().snapshot);
 
 			// Reconciliation
 			if (gIsReconciling && !gCommands.empty())
 			{
 				Player* me = gWorld.GetPlayer(gMyID);
-				if (me)
+				if (!me)
+					return false;
+
+				// ID of the last command the server processed
+				uint32_t lastCommandID = me->GetLastCommandID();
+
+				// Remove older commands
+				const auto pred = [lastCommandID](const auto& cmd)
 				{
-					// Last commandID on server
-					uint32_t lastCommandID = me->GetLastCommandID();
+					return cmd.id <= lastCommandID;
+				};
 
-					// Remove older commands
-					const auto pred = [lastCommandID](const auto& cmd)
-					{
-						return cmd.id <= lastCommandID;
-					};
+				gCommands.erase(
+					std::remove_if(gCommands.begin(), gCommands.end(), pred),
+					gCommands.end()
+				);
 
-					auto it = std::remove_if(gCommands.begin(), gCommands.end(), pred);
-					gCommands.erase(it, gCommands.end());
-
-					// Reapply commands the server had not yet processed
-					for (const auto& cmd : gCommands)
-						gWorld.RunCommand(cmd, gMyID, true);
-				}
+				// Reapply commands the server had not yet processed
+				for (const auto& cmd : gCommands)
+					gWorld.RunCommand(cmd, gMyID, true);
 			}
 
 			return true;
@@ -204,12 +258,19 @@ namespace Network
 
 		DEF_CLIENT_RECV(PACKET_SERVER_SHOOT)
 		{
+			//// Another client has fired a bullet
+			// newBullet: The bullet object
+			// serverTime: The timestamp the bullet was spawned on the server
+
+			if (gConnection.status != STATUS_PLAYING && gConnection.status != STATUS_SPECTATING)
+				return true;
+
 			Bullet newBullet;
 			uint64_t serverTime;
 			p >> newBullet >> serverTime;
 
-			//gWorld.AddBullet(newBullet);
-
+			// Store the bullet along with its timestamp
+			// so that we can spawn it when we've interpolated that far
 			FutureBullet fBullet;
 			fBullet.serverTime = serverTime;
 			fBullet.bullet = newBullet;
@@ -237,13 +298,14 @@ namespace Network
 
 		void PrintOptions()
 		{
+			using std::boolalpha; using std::setw; using std::left;
 			constexpr int FILL_W = 32;
 
-			debug << std::boolalpha << '\n' <<
-				std::setw(FILL_W) << std::left << "Predicting: " << gIsPredicting << '\n' <<
-				std::setw(FILL_W) << std::left << "Reconciliating: " << gIsReconciling << '\n' <<
-				std::setw(FILL_W) << std::left << "Interpolating: " << gIsInterpolating << '\n' <<
-				std::setw(FILL_W) << std::left << "Showing server bullets: " << gShowServerBullets << std::endl;
+			debug << boolalpha << '\n' <<
+				setw(FILL_W) << left << "Predicting: " << gIsPredicting << '\n' <<
+				setw(FILL_W) << left << "Reconciliating: " << gIsReconciling << '\n' <<
+				setw(FILL_W) << left << "Interpolating: " << gIsInterpolating << '\n' <<
+				setw(FILL_W) << left << "Showing server bullets: " << gShowServerBullets << std::endl;
 		}
 
 		void InitializeWindow(const char* title)
@@ -251,11 +313,14 @@ namespace Network
 			debug << "CLIENT: Initialising SFML window..." << std::endl;
 			gWindow = std::make_unique<sf::RenderWindow>(sf::VideoMode(VP_WIDTH, VP_HEIGHT), title);
 			gWindow->setFramerateLimit(30);
+
+			// NOTE: This never works ...
 			gWindow->requestFocus();
 
 			PrintOptions();
 		}
 
+		// The time in the past we are showing
 		uint64_t GetRenderTime()
 		{
 			return (gElapsedTime.count() > INTERPOLATION_TIME_MS) ? gElapsedTime.count() - INTERPOLATION_TIME_MS : 0;
@@ -305,6 +370,7 @@ namespace Network
 				uint8_t type;
 				p >> type;
 
+				// Call the appropriate receive function based on the packet-type
 				if (type < PACKET_END && gReceivePacket[type] != nullptr)
 				{
 					if (!gReceivePacket[type](p))
@@ -386,6 +452,8 @@ namespace Network
 			return true;
 		}
 
+		// Create a movement command to send to the server
+		// and possibly run locally (prediction)
 		void BuildCommand(ms dt)
 		{
 			static uint32_t commandID = 0;
@@ -421,11 +489,12 @@ namespace Network
 			}
 		}
 
-		// Get the snapshots which we can interpolate positions at t == renderTime from
-		std::pair<WorldSnapshot*, WorldSnapshot*> GetRelevantSnapshots(uint64_t renderTime)
+		// Get two snapshots from which we can interpolate positions at t == renderTime
+		auto GetRelevantSnapshots(uint64_t renderTime)
 		{
 			WorldSnapshot* to = nullptr;
 			WorldSnapshot* from = nullptr;
+
 			for (auto& snapshot : gSnapshots)
 			{
 				if (snapshot.clientTime > renderTime)
@@ -433,12 +502,14 @@ namespace Network
 					to = &snapshot;
 					break;
 				}
+
 				from = &snapshot;
 			}
 
 			return std::make_pair(to, from);
 		}
 
+		// Linearly interpolate the other player's position based on our delay
 		void Interpolate(const WorldSnapshot& from, const WorldSnapshot& to, uint64_t renderTime)
 		{
 			float alpha = (float) (renderTime - from.clientTime) / (float) (to.clientTime - from.clientTime);
@@ -478,11 +549,16 @@ namespace Network
 
 				switch (gConnection.status)
 				{
+					// When joining, we are just waiting to receive PACKET_SERVER_{WELCOME,SPECTATOR,FULL}
 					case STATUS_JOINING:
 						continue;
+
+					// When playing, we want to handle user input
 					case STATUS_PLAYING:
 						// Movement input
 						BuildCommand(dt);
+
+					// When spectating, we want to be able toggle options on and off
 					case STATUS_SPECTATING:
 						// Debug and 'meta' input
 						if (!HandleEvents())
@@ -507,6 +583,7 @@ namespace Network
 					{
 						Interpolate(*from, *to, renderTime);
 
+						// Check if we have passed a snapshot where a new bullet was fired
 						for (auto it = gIncomingBullets.begin(); it != gIncomingBullets.end(); )
 						{
 							if (from->serverTime >= it->serverTime)

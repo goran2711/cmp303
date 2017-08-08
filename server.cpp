@@ -238,11 +238,10 @@ namespace Network
 			// The time at which the shot was fired by the client
 			uint64_t shotFiredTime = gElapsedTime.count() - connection->latency.count();
 
+			// Find the snapshot where the bullet was fired
 			auto snapshotIterator = std::find_if(gSnapshots.begin(), gSnapshots.end(), [&](const auto& ss) {
 				return ss.serverTime >= shotFiredTime;
 			});
-
-			World shotFiredSnapshot;
 
 			// If we could not find the snapshot where the player fired (it's too old)
 			if (snapshotIterator == gSnapshots.end())
@@ -253,18 +252,18 @@ namespace Network
 				connection->active = false;
 				return;
 			}
-
-			shotFiredSnapshot = snapshotIterator->snapshot;
-
-			debug << "latency: " << connection->latency.count() << " shotFiredTime: " << shotFiredTime << " last snapshot: " << gSnapshots.back().serverTime << std::endl;
+			
+			World shotFiredSnapshot = snapshotIterator->snapshot;
 
 			// How far the bullet has travelled since it was fired by the client
 			float travelledDistance = Bullet::BULLET_SPEED * connection->latency.count() / 1000.f;
 
-			// The place where the bullet was fired from
+			// The place where the bullet was fired from (does not take client-side prediction into account)
 			auto bulletPosition = shotFiredSnapshot.GetPlayer(connection->pid)->GetPosition();
 
+			// Move the bullet to the y-coordinate we expect it to be on the client's screen
 			bulletPosition.y += (gWorld.IsPlayerTopLane(connection->pid) ? travelledDistance : -travelledDistance);
+
 			Bullet bullet = gWorld.PlayerShoot(connection->pid, bulletPosition);
 
 			// Inform the other clients that a bullet has been fired
@@ -291,6 +290,7 @@ namespace Network
 
 		// Server logic ///////
 
+		// NOTE: Sometimes SFML will start listening on the wrong port
 		bool StartListening(const sf::IpAddress& address, Port port)
 		{
 			if (gListener.listen(port, address) != Status::Done)
@@ -327,7 +327,7 @@ namespace Network
 
 		auto DropConnection(ConnectionPtr connection)
 		{
-			debug << "SERVER: Dropping client " << (int) connection->pid << " -- " << gConnections.size() - 1 << " clients connected" << std::endl;
+			debug << "SERVER: Dropping client " << (int) connection->pid << ", " << gConnections.size() - 1 << " clients are currently connected" << std::endl;
 
 			gSelector.remove(connection->socket);
 
@@ -350,6 +350,7 @@ namespace Network
 				uint8_t type;
 				p >> type;
 
+				// Call the appropriate receive function based on the packet-type
 				if (type < PACKET_END && _receivePacket[type] != nullptr && connection->active)
 					_receivePacket[type](connection, p);
 			}
@@ -357,59 +358,67 @@ namespace Network
 
 		void ReceiveFromClients()
 		{
-			if (gSelector.wait(sf::milliseconds(WAIT_TIME_MS)))
+			if (!gSelector.wait(sf::milliseconds(WAIT_TIME_MS)))
+				return;
+
+			if (gSelector.isReady(gListener))
+				AcceptClients();
+
+			for (auto it = gConnections.begin(); it != gConnections.end(); )
 			{
-				if (gSelector.isReady(gListener))
-					AcceptClients();
+				ConnectionPtr connection = *it;
 
-				for (auto it = gConnections.begin(); it != gConnections.end(); )
+				if (gSelector.isReady(connection->socket))
 				{
-					ConnectionPtr connection = *it;
-
-					if (gSelector.isReady(connection->socket))
+					if (connection->active)
+						Receive(connection);
+					// Drop inactive connections
+					else
 					{
-						if (connection->active)
-							Receive(connection);
-						else
-						{
-							it = DropConnection(connection);
-							continue;
-						}
+						it = DropConnection(connection);
+						continue;
 					}
-
-					++it;
 				}
+
+				++it;
 			}
 		}
 
 		void UpdateClients()
 		{
-			if (the_clock::now() >= gNextUpdatePoint)
-			{
-				WorldSnapshot snapshot;
-				snapshot.snapshot = gWorld;
-				snapshot.serverTime = gElapsedTime.count();
+			// RECODE(?): Using the_clock::now() too much?
 
-				bool ping = (the_clock::now() >= gNextPingPoint);
+			if (the_clock::now() < gNextUpdatePoint)
+				return;
+
+			// Create a snapshot of the server's simulation state
+			WorldSnapshot snapshot;
+			snapshot.snapshot = gWorld;
+			snapshot.serverTime = gElapsedTime.count();
+
+			// Is it time to ping?
+			bool ping = (the_clock::now() >= gNextPingPoint);
+
+			// Schedule the next ping
+			if (ping)
+				gNextPingPoint = the_clock::now() + ms(PING_INTERVAL_MS);
+
+			// Send state update to all connected clients
+			for (auto& connection : gConnections)
+			{
+				SEND(PACKET_SERVER_UPDATE)(connection, snapshot);
 
 				if (ping)
-					gNextPingPoint = the_clock::now() + ms(PING_INTERVAL_MS);
-
-				for (auto& connection : gConnections)
-				{
-					SEND(PACKET_SERVER_UPDATE)(connection, snapshot);
-
-					if (ping)
-						SEND(PACKET_SERVER_PING)(connection, snapshot.serverTime, true);
-				}
-
-				gNextUpdatePoint = the_clock::now() + ms(UPDATE_INTERVAL_MS);
+					SEND(PACKET_SERVER_PING)(connection, snapshot.serverTime, true);
 			}
+
+			// Schedule next update
+			gNextUpdatePoint = the_clock::now() + ms(UPDATE_INTERVAL_MS);
 		}
 
 		void DeleteOldSnapshots()
 		{
-			auto pred = [&](const auto& snapshot)
+			const auto pred = [&](const auto& snapshot)
 			{
 				return (gElapsedTime.count() - snapshot.serverTime) >= SNAPSHOT_RETENTION_MS;
 			};
@@ -420,9 +429,11 @@ namespace Network
 			);
 		}
 
+		// The task to be run in the server thread (main server loop)
 		void ServerTask(const sf::IpAddress& address, Port port)
 		{
 			gIsServerRunning = true;
+
 			gNextPingPoint = the_clock::now() + ms(PING_INTERVAL_MS);
 			gNextUpdatePoint = the_clock::now() + ms(UPDATE_INTERVAL_MS);
 
@@ -436,10 +447,12 @@ namespace Network
 
 				ReceiveFromClients();
 
+				// Update bullet positions
 				gWorld.Update(dt.count());
 
 				DeleteOldSnapshots();
 
+				// Store the current state of the simulation
 				WorldSnapshot ss;
 				ss.snapshot = gWorld;
 				ss.serverTime = gElapsedTime.count();
@@ -449,13 +462,14 @@ namespace Network
 
 				auto endFrame = the_clock::now();
 
-				dt = std::chrono::duration_cast<ms>(endFrame - startFrame);
+				dt = to_ms(startFrame, endFrame);
 				gElapsedTime += dt;
 			}
 
 			gIsServerRunning = false;
 		}
 
+		// Start server in separate thread
 		bool StartServer(const sf::IpAddress& address, Port port)
 		{
 			gServerThread = std::thread([&] { ServerTask(address, port); });

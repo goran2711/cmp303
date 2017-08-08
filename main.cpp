@@ -1,7 +1,6 @@
 /*
 	Project is x64
 */
-// Project is x64
 
 #include <thread>
 #include "server.h"

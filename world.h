@@ -5,6 +5,9 @@
 #include <vector>
 #include <SFML/Graphics.hpp>
 
+// world.h: Represents a game simulation. Holds the position of all the entities in the game
+//			Also contains movement constraints
+
 class World
 {
 public:
@@ -25,7 +28,7 @@ public:
 	bool AddPlayer(Player& player);
 	bool RemovePlayer(uint8_t id);
 
-	void OverwritePlayers(const World& other);
+	void UpdateWorld(const World& other);
 
 	void RunCommand(const Command& cmd, uint8_t id, bool rec);
 	Bullet PlayerShoot(uint8_t id, sf::Vector2f playerPos = INVALID_POS);
@@ -42,7 +45,7 @@ public:
 	const std::vector<Player>& GetPlayers() const { return mPlayers; }
 
 private:
-	static constexpr float SPAWN_POS = { H_VP_WIDTH };
+	static constexpr float SPAWN_POS_X = H_VP_WIDTH;
 
 	uint8_t GeneratePlayerID();
 	bool IsLaneOccupied(int lane) const;

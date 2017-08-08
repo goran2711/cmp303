@@ -2,6 +2,8 @@
 #include <iostream>
 #include <mutex>
 
+// locked_ostream.h: thread-safe stdin
+
 class locked_ostream
 {
 	friend class synchronized_ostream;
