@@ -4,7 +4,9 @@
 #include "debug.h"
 #include <algorithm>
 
-/* static */ void World::RenderWorld(const World & world, sf::RenderWindow & window)
+/* static */ const sf::Vector2f World::INVALID_POS = { -1.f, -1.f };
+
+/* static */ void World::RenderWorld(const World & world, sf::RenderWindow & window, bool showServerBullets)
 {
 	sf::RectangleShape shape({ PADDLE_W, PADDLE_H });
 	shape.setOrigin({ H_PADDLE_W, H_PADDLE_H });
@@ -16,7 +18,6 @@
 		window.draw(shape);
 	}
 
-	// TEMP: Bullet size
 	shape.setSize({ BULLET_W, BULLET_H });
 	shape.setOrigin({ H_BULLET_W, H_BULLET_H });
 	for (const auto& bullet : world.mBullets)
@@ -25,6 +26,23 @@
 		shape.setPosition(bullet.GetPosition());
 		window.draw(shape);
 	}
+
+	if (showServerBullets)
+	{
+		shape.setFillColor(sf::Color(0x00000000));
+		shape.setOutlineThickness(1.f);
+		for (const auto& bullet : world.mServerBullets)
+		{
+			shape.setOutlineColor(sf::Color(0xA0A0FFFF));
+			shape.setPosition(bullet.GetPosition());
+			window.draw(shape);
+		}
+	}
+}
+
+void World::AddBullet(const Bullet & bullet)
+{
+	mBullets.push_back(bullet);
 }
 
 bool World::AddPlayer(Player& player)
@@ -59,6 +77,12 @@ bool World::RemovePlayer(uint8_t id)
 	return it != mPlayers.end();
 }
 
+void World::OverwritePlayers(const World & other)
+{
+	mPlayers = other.mPlayers;
+	mServerBullets = other.mBullets;
+}
+
 void World::RunCommand(const Command& cmd, uint8_t id, bool rec)
 {
 	Player* player = GetPlayer(id);
@@ -75,11 +99,11 @@ void World::RunCommand(const Command& cmd, uint8_t id, bool rec)
 	}
 }
 
-void World::PlayerShoot(uint8_t id)
+Bullet World::PlayerShoot(uint8_t id, sf::Vector2f playerPos)
 {
 	Player* player = GetPlayer(id);
 	if (!player)
-		return;
+		return{};
 
 	Bullet newBullet;
 	newBullet.SetID(mNewEID++);
@@ -89,13 +113,23 @@ void World::PlayerShoot(uint8_t id)
 	float direction = IsPlayerTopLane(id) ? 1.f : -1.f;
 	newBullet.SetDirection({ 0.f, direction });
 
-	auto pos = player->GetPosition();
-	pos.y += 32.f * direction;
-	newBullet.SetPosition(pos);
+	if (playerPos != INVALID_POS)
+	{
+		playerPos.y += 32.f * direction;
+		newBullet.SetPosition(playerPos);
+	}
+	else
+	{
+		auto newPos = player->GetPosition();
+		newPos.y += 32.f * direction;
+		newBullet.SetPosition(newPos);
+	}
+
 	mBullets.push_back(newBullet);
+	return newBullet;
 }
 
-void World::Update(float dt)
+void World::Update(uint64_t dt)
 {
 	for (auto it = mBullets.begin(); it != mBullets.end(); )
 	{
@@ -118,19 +152,20 @@ void World::Update(float dt)
 		}
 		else
 		{
-			for (auto& player : mPlayers)
-			{
-				float playerTop = player.GetPosition().y + H_PADDLE_H;
-				float playerBot = player.GetPosition().y - H_PADDLE_H;
-				float playerRight = player.GetPosition().x + H_PADDLE_W;
-				float playerLeft = player.GetPosition().x - H_PADDLE_W;
+			// Oh dear, I forgot how to do AABB
+		//	for (auto& player : mPlayers)
+		//	{
+		//		float playerTop = player.GetPosition().y + H_PADDLE_H;
+		//		float playerBot = player.GetPosition().y - H_PADDLE_H;
+		//		float playerRight = player.GetPosition().x + H_PADDLE_W;
+		//		float playerLeft = player.GetPosition().x - H_PADDLE_W;
 
-				float bulletRight = bullet.GetPosition().x + H_BULLET_W;
-				float bulletLeft = bullet.GetPosition().x - H_BULLET_W;
+		//		float bulletRight = bullet.GetPosition().x + H_BULLET_W;
+		//		float bulletLeft = bullet.GetPosition().x - H_BULLET_W;
 
-				if ((bulletLeft > playerLeft && bulletRight < playerRight) && bulletBot < playerTop)
-					std::cout << "Collision\n";
-			}
+		//		if ((bulletLeft > playerLeft && bulletRight < playerRight) && bulletBot < playerTop)
+		//			std::cout << "Collision\n";
+		//	}
 			++it;
 		}
 	}

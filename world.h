@@ -11,20 +11,26 @@ public:
 	friend sf::Packet& operator<<(sf::Packet& p, const World& world);
 	friend sf::Packet& operator >> (sf::Packet& p, World& world);
 
-	constexpr static int MAX_PLAYERS = 2;
+	static constexpr int MAX_PLAYERS = 2;
 
 	static constexpr float LANE_BOTTOM = 568.f;
 	static constexpr float LANE_TOP = 32.f;
 
-	static void RenderWorld(const World& world, sf::RenderWindow& window);
+	static const sf::Vector2f INVALID_POS;
+
+	static void RenderWorld(const World& world, sf::RenderWindow& window, bool showServerBullets = false);
+
+	void AddBullet(const Bullet& bullet);
 
 	bool AddPlayer(Player& player);
 	bool RemovePlayer(uint8_t id);
 
-	void RunCommand(const Command& cmd, uint8_t id, bool rec);
-	void PlayerShoot(uint8_t id);
+	void OverwritePlayers(const World& other);
 
-	void Update(float dt);
+	void RunCommand(const Command& cmd, uint8_t id, bool rec);
+	Bullet PlayerShoot(uint8_t id, sf::Vector2f playerPos = INVALID_POS);
+
+	void Update(uint64_t dt);
 
 	Bullet* GetBullet(uint32_t id);
 
@@ -48,6 +54,7 @@ private:
 
 	std::vector<Player> mPlayers;
 	std::vector<Bullet> mBullets;
+	std::vector<Bullet> mServerBullets;
 };
 
 sf::Packet& operator<<(sf::Packet& p, const World& world);

@@ -1,6 +1,7 @@
 #pragma once
 #include <SFML/Network.hpp>
 #include <memory>
+#include "common.h"
 
 // Network.h: Contains code that is shared between Client and Server
 
@@ -40,8 +41,7 @@ namespace Network
 
 		uint8_t pid;
 		bool active = false;
-		uint32_t latency;
-		uint64_t sentPingRequestTime;
+		ms latency;
 		ConnectionStatus status = STATUS_NONE;
 		sf::TcpSocket socket;
 	};
@@ -55,9 +55,11 @@ namespace Network
 		PACKET_SERVER_SPECTATOR,	// Packet letting the client know they can join as a spectator
 		PACKET_SERVER_FULL,			// Packet letting the client know it is full
 		PACKET_CLIENT_CMD,			// Packet containing a movement command from a client
+		PACKET_SERVER_PING,			// 
+		PACKET_CLIENT_PING,			// Sent by the client when the server request it to calculate latency
 		PACKET_SERVER_UPDATE,		// Packet from the server containing the current state of the game
 		PACKET_CLIENT_SHOOT,		// Request from the client to spawn a bullet
-		PACKET_CLIENT_PING,			// Sent by the client when the server request it to calculate latency
+		PACKET_SERVER_SHOOT,		// Packet from server informing clients that another client has shot
 		PACKET_END,
 	};
 

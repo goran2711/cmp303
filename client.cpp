@@ -22,16 +22,13 @@ namespace Network
 		bool gIsPredicting = true;
 		bool gIsReconciling = true;
 		bool gIsInterpolating = true;
-		bool gIsInterpolatingBullets = false;
-
-		// Only used to determine the colour this client requests from the server
-		bool gIsHost;
+		bool gShowServerBullets = false;
 
 		// Graphics
 		std::unique_ptr<sf::RenderWindow> gWindow;
 
 		// Game
-		uint64_t gElapsedTime = 0;
+		ms gElapsedTime;
 
 		uint8_t gMyID;
 		World gWorld;
@@ -40,6 +37,16 @@ namespace Network
 		std::list<WorldSnapshot> gSnapshots;
 
 		bool gViewInverted = false;
+
+		struct FutureBullet
+		{
+			uint64_t serverTime;
+			Bullet bullet;
+		};
+
+		// Cache of bullets the server has told us about, but we are not
+		// ready to spawn yet because of interpolation
+		std::vector<FutureBullet> gIncomingBullets;
 
 		// Forward declarations
 		void InitializeWindow(const char* title);
@@ -51,8 +58,6 @@ namespace Network
 		DEF_CLIENT_SEND(PACKET_CLIENT_JOIN)
 		{
 			auto p = InitPacket(PACKET_CLIENT_JOIN);
-			// Random hex colours
-			p << (gIsHost ? 0xA0FFA0FF : 0xFFA0A0FF);
 
 			debug << "CLIENT: Sent join request to server" << std::endl;
 			gConnection.Send(p);
@@ -62,7 +67,15 @@ namespace Network
 		DEF_SEND_PARAM(PACKET_CLIENT_CMD)(const Command& cmd)
 		{
 			auto p = InitPacket(PACKET_CLIENT_CMD);
-			p << gMyID << cmd;
+			p << cmd;
+
+			gConnection.Send(p);
+		}
+
+		DEF_SEND_PARAM(PACKET_CLIENT_PING)(uint64_t serverTime)
+		{
+			auto p = InitPacket(PACKET_CLIENT_PING);
+			p << serverTime << gElapsedTime.count();
 
 			gConnection.Send(p);
 		}
@@ -71,13 +84,7 @@ namespace Network
 		{
 			auto p = InitPacket(PACKET_CLIENT_SHOOT);
 
-			gConnection.Send(p);
-		}
-
-		DEF_CLIENT_SEND(PACKET_CLIENT_PING)
-		{
-			auto p = InitPacket(PACKET_CLIENT_PING);
-
+			gWorld.PlayerShoot(gMyID);
 			gConnection.Send(p);
 		}
 
@@ -126,6 +133,21 @@ namespace Network
 			return false;
 		}
 
+		DEF_CLIENT_RECV(PACKET_SERVER_PING)
+		{
+			bool pingBack = false;
+			uint64_t timestamp;
+			p >> pingBack >> timestamp;
+
+			// We have been asked to ping back, so timestamp is the server's timestamp
+			if (pingBack)
+				SEND(PACKET_CLIENT_PING)(timestamp);
+			else
+				gConnection.latency = gElapsedTime - ms(timestamp);
+
+			return true;
+		}
+
 		DEF_CLIENT_RECV(PACKET_SERVER_UPDATE)
 		{
 			// We don't care about state updates
@@ -134,14 +156,15 @@ namespace Network
 			if (gConnection.status == STATUS_JOINING)
 				return true;
 
+			bool ping = false;
 			WorldSnapshot snapshot;
 			p >> snapshot;
 
 			// Overwrite last snapshot if we receive two snapshots in the same frame
-			if (gSnapshots.empty() || gSnapshots.back().clientTime != gElapsedTime)
+			if (gSnapshots.empty() || gSnapshots.back().clientTime != gElapsedTime.count())
 				gSnapshots.push_back(snapshot);
 
-			gSnapshots.back().clientTime = gElapsedTime;
+			gSnapshots.back().clientTime = gElapsedTime.count();
 
 			// Delete old snapshots
 			uint64_t renderTime = GetRenderTime();
@@ -150,7 +173,7 @@ namespace Network
 			DeleteOldSnapshots(renderTime);
 
 			// Update world
-			gWorld = gSnapshots.back().snapshot;
+			gWorld.OverwritePlayers(gSnapshots.back().snapshot);
 
 			// Reconciliation
 			if (gIsReconciling && !gCommands.empty())
@@ -179,6 +202,23 @@ namespace Network
 			return true;
 		}
 
+		DEF_CLIENT_RECV(PACKET_SERVER_SHOOT)
+		{
+			Bullet newBullet;
+			uint64_t serverTime;
+			p >> newBullet >> serverTime;
+
+			//gWorld.AddBullet(newBullet);
+
+			FutureBullet fBullet;
+			fBullet.serverTime = serverTime;
+			fBullet.bullet = newBullet;
+
+			gIncomingBullets.push_back(fBullet);
+
+			return true;
+		}
+
 		using ClientReceiveCallback = std::function<bool(sf::Packet&)>;
 		const ClientReceiveCallback gReceivePacket[] = {
 			nullptr,						// PACKET_CLIENT_JOIN
@@ -186,12 +226,25 @@ namespace Network
 			RECV(PACKET_SERVER_SPECTATOR),
 			RECV(PACKET_SERVER_FULL),
 			nullptr,						// PACKET_CLIENT_CMD
+			RECV(PACKET_SERVER_PING),
+			nullptr,						// PACKET_CLIENT_PING
 			RECV(PACKET_SERVER_UPDATE),
 			nullptr,						// PACKET_CLIENT_SHOOT
-			nullptr,						// PACKET_CLIENT_PING
+			RECV(PACKET_SERVER_SHOOT),
 		};
 
 		// Client logic ///////
+
+		void PrintOptions()
+		{
+			constexpr int FILL_W = 32;
+
+			debug << std::boolalpha << '\n' <<
+				std::setw(FILL_W) << std::left << "Predicting: " << gIsPredicting << '\n' <<
+				std::setw(FILL_W) << std::left << "Reconciliating: " << gIsReconciling << '\n' <<
+				std::setw(FILL_W) << std::left << "Interpolating: " << gIsInterpolating << '\n' <<
+				std::setw(FILL_W) << std::left << "Showing server bullets: " << gShowServerBullets << std::endl;
+		}
 
 		void InitializeWindow(const char* title)
 		{
@@ -200,16 +253,12 @@ namespace Network
 			gWindow->setFramerateLimit(30);
 			gWindow->requestFocus();
 
-			debug << "\nAll options except bullet interpolation are enabled by default\n" <<
-				"F1: Client-side prediction\n" <<
-				"F2: Server reconciliation\n" <<
-				"F3: Interpolation\n" <<
-				"F4: Bullet interpolation (Broken)" << std::endl;
+			PrintOptions();
 		}
 
 		uint64_t GetRenderTime()
 		{
-			return (gElapsedTime > INTERPOLATION_TIME_MS) ? gElapsedTime - INTERPOLATION_TIME_MS : 0;
+			return (gElapsedTime.count() > INTERPOLATION_TIME_MS) ? gElapsedTime.count() - INTERPOLATION_TIME_MS : 0;
 		}
 
 		void DeleteOldSnapshots(uint64_t renderTime)
@@ -287,7 +336,7 @@ namespace Network
 							case Key::Escape:
 								return false;
 
-							// Control networking strategies
+								// Control networking strategies
 							case Key::F1:
 							{
 								gIsPredicting = !gIsPredicting;
@@ -312,18 +361,12 @@ namespace Network
 							{
 								gIsInterpolating = !gIsInterpolating;
 
-								if (gIsInterpolatingBullets)
-									gIsInterpolatingBullets = false;
-
 								changedOptions = true;
 							}
 							break;
 							case Key::F4:
 							{
-								gIsInterpolatingBullets = !gIsInterpolatingBullets;
-
-								if (!gIsInterpolating && gIsInterpolatingBullets)
-									gIsInterpolating = true;
+								gShowServerBullets = !gShowServerBullets;
 
 								changedOptions = true;
 							}
@@ -334,15 +377,7 @@ namespace Network
 						}
 
 						if (changedOptions)
-						{
-							constexpr int FILL_W = 32;
-
-							debug << std::boolalpha << '\n' <<
-								std::setw(FILL_W) << std::left << "Predicting: " << gIsPredicting << '\n' <<
-								std::setw(FILL_W) << std::left << "Reconciliating: " << gIsReconciling << '\n' <<
-								std::setw(FILL_W) << std::left << "Interpolating: " << gIsInterpolating << '\n' <<
-								std::setw(FILL_W) << std::left << "Interpolating bullets (broken): " << gIsInterpolatingBullets << std::endl;
-						}
+							PrintOptions();
 					}
 					break;
 				}
@@ -351,7 +386,7 @@ namespace Network
 			return true;
 		}
 
-		void BuildCommand(uint64_t dt)
+		void BuildCommand(ms dt)
 		{
 			static uint32_t commandID = 0;
 
@@ -359,7 +394,7 @@ namespace Network
 			{
 				Command cmd;
 				cmd.id = commandID++;
-				cmd.dt = dt;
+				cmd.dt = dt.count();
 
 				Command::Direction direction = Command::IDLE;
 
@@ -386,8 +421,8 @@ namespace Network
 			}
 		}
 
-		// Get the snapshots that we can interpolate postions at t == renderTime from
-		std::tuple<WorldSnapshot*, WorldSnapshot*> GetRelevantSnapshots(uint64_t renderTime)
+		// Get the snapshots which we can interpolate positions at t == renderTime from
+		std::pair<WorldSnapshot*, WorldSnapshot*> GetRelevantSnapshots(uint64_t renderTime)
 		{
 			WorldSnapshot* to = nullptr;
 			WorldSnapshot* from = nullptr;
@@ -401,7 +436,7 @@ namespace Network
 				from = &snapshot;
 			}
 
-			return std::make_tuple(to, from);
+			return std::make_pair(to, from);
 		}
 
 		void Interpolate(const WorldSnapshot& from, const WorldSnapshot& to, uint64_t renderTime)
@@ -424,38 +459,19 @@ namespace Network
 					}
 				}
 			}
-
-			// NOTE: Broken + repetitive
-			if (gIsInterpolatingBullets)
-			{
-				for (const auto& bulletFrom : from.snapshot.GetBullets())
-				{
-					for (const auto& bulletTo : to.snapshot.GetBullets())
-					{
-						if (bulletFrom.GetID() == bulletTo.GetID())
-						{
-							auto bulletReal = gWorld.GetBullet(bulletFrom.GetID());
-							if (bulletReal)
-							{
-								sf::Vector2f newPos = (bulletTo.GetPosition() - bulletFrom.GetPosition()) * alpha + bulletFrom.GetPosition();
-								bulletReal->SetPosition(newPos);
-							}
-						}
-					}
-				}
-			}
 		}
 
 		void ClientLoop()
 		{
 			gIsRunning = true;
 
-			uint64_t dt = 0;
-			sf::Clock deltaClock;
+			ms dt{ 0 };
 
 			// Main loop
 			while (gIsRunning)
 			{
+				auto startFrame = the_clock::now();
+
 				// Networking
 				if (!ReceiveFromServer())
 					break;
@@ -473,6 +489,9 @@ namespace Network
 							gIsRunning = false;
 				}
 
+				// Bullet prediction
+				gWorld.Update(dt.count());
+
 				// Interpolation
 				if (gIsInterpolating)
 				{
@@ -480,21 +499,36 @@ namespace Network
 
 					// Get the two snapshots between which the.GetPosition @ renderTime exists
 					auto snapshots = GetRelevantSnapshots(renderTime);
-					WorldSnapshot* to = std::get<0>(snapshots);
-					WorldSnapshot* from = std::get<1>(snapshots);
+					WorldSnapshot* to = snapshots.first;
+					WorldSnapshot* from = snapshots.second;
 
 					// If we have enough data
 					if (to && from)
+					{
 						Interpolate(*from, *to, renderTime);
+
+						for (auto it = gIncomingBullets.begin(); it != gIncomingBullets.end(); )
+						{
+							if (from->serverTime >= it->serverTime)
+							{
+								gWorld.AddBullet(it->bullet);
+								it = gIncomingBullets.erase(it);
+							}
+							else
+								++it;
+						}
+					}
 				}
 
 				// Render
 				gWindow->clear();
-				World::RenderWorld(gWorld, *gWindow);
+				World::RenderWorld(gWorld, *gWindow, gShowServerBullets);
 				gWindow->display();
 
+				auto endFrame = the_clock::now();
+
 				// Timing
-				dt = deltaClock.restart().asMilliseconds();
+				dt = std::chrono::duration_cast<ms>(endFrame - startFrame);
 				gElapsedTime += dt;
 			}
 
@@ -502,10 +536,8 @@ namespace Network
 			gIsRunning = false;
 		}
 
-		bool StartClient(const sf::IpAddress& address, Port port, bool isHost)
+		bool StartClient(const sf::IpAddress& address, Port port)
 		{
-			gIsHost = isHost;
-
 			if (!ConnectToServer(address, port))
 			{
 				debug << "CLIENT: Failed to connect to server" << std::endl;

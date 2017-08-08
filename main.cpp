@@ -32,7 +32,7 @@ int main()
 		Server::ServerTask({ SERVERIP }, SERVERPORT);
 	// Start client
 	else
-		Client::StartClient({ SERVERIP }, SERVERPORT, isHost);
+		Client::StartClient({ SERVERIP }, SERVERPORT);
 
 	// Join server thread
 	if (isHost)
