@@ -131,7 +131,7 @@ Bullet World::PlayerShoot(uint8_t id, sf::Vector2f playerPos)
 	return newBullet;
 }
 
-void World::Update(uint64_t dt)
+void World::Update(sf::Uint64 dt)
 {
 	for (auto it = mBullets.begin(); it != mBullets.end(); )
 	{
@@ -154,7 +154,7 @@ void World::Update(uint64_t dt)
 	}
 }
 
-Bullet* World::GetBullet(uint32_t id)
+Bullet* World::GetBullet(sf::Uint32 id)
 {
 	for (auto& bullet : mBullets)
 		if (bullet.GetID() == id)

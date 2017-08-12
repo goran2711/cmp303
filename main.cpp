@@ -8,12 +8,32 @@
 #include "debug.h"
 using namespace Network;
 
-constexpr char SERVERIP[] = "127.0.0.1";
-constexpr Port SERVERPORT = 5555;
+constexpr char DEFAULT_IP[] = "127.0.0.1";
+constexpr Port DEFAULT_PORT = 11223;
 
-int main()
+int main(int argc, const char* argv[])
 {
-	debug << "y: host game\nn: join game\nd: dedicated server\n";
+	std::string serverip;
+	Port serverport;
+
+	if (argc >= 2)
+	{
+			serverip = argv[1];
+			serverport = (argc > 2) ? atoi(argv[2]) : DEFAULT_PORT;
+			debug << "Using custom address: "; 
+	}
+	else
+	{
+			serverip = DEFAULT_IP;
+			serverport = DEFAULT_PORT;
+			debug << "Using default address: ";
+	}
+	debug << serverip << ':' << serverport << std::endl;
+
+	debug << "Y: Host new game\n" <<
+			"N: Join game in progress\n" << 
+			"D: Run as dedicated server" << std::endl;
+
 	char input{};
 	std::cin >> input;
 
@@ -24,17 +44,16 @@ int main()
 
 	// Start server in separate thread
 	if (isHost)
-		Server::StartServer({ SERVERIP }, SERVERPORT);
+		Server::StartServer({ serverip }, serverport);
 
 	// Start server in main thread
 	if (isDedicated)
-		Server::ServerTask({ SERVERIP }, SERVERPORT);
+		Server::ServerTask({ serverip }, serverport);
 	// Start client
 	else
-		Client::StartClient({ SERVERIP }, SERVERPORT);
+		Client::StartClient({ serverip }, serverport);
 
-	// Join server thread
-	if (isHost)
+	// Join server thread	if (isHost)
 		Server::CloseServer();
 
 	return 0;

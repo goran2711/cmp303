@@ -26,20 +26,20 @@ public:
 	void AddBullet(const Bullet& bullet);
 
 	bool AddPlayer(Player& player);
-	bool RemovePlayer(uint8_t id);
+	bool RemovePlayer(sf::Uint8 id);
 
 	void UpdateWorld(const World& other);
 
-	void RunCommand(const Command& cmd, uint8_t id, bool rec);
-	Bullet PlayerShoot(uint8_t id, sf::Vector2f playerPos = INVALID_POS);
+	void RunCommand(const Command& cmd, sf::Uint8 id, bool rec);
+	Bullet PlayerShoot(sf::Uint8 id, sf::Vector2f playerPos = INVALID_POS);
 
-	void Update(uint64_t dt);
+	void Update(sf::Uint64 dt);
 
-	Bullet* GetBullet(uint32_t id);
+	Bullet* GetBullet(sf::Uint32 id);
 
-	bool IsPlayerTopLane(uint8_t id);
-	Player* GetPlayer(uint8_t id);
-	bool PlayerExists(uint8_t id);
+	bool IsPlayerTopLane(sf::Uint8 id);
+	Player* GetPlayer(sf::Uint8 id);
+	bool PlayerExists(sf::Uint8 id);
 
 	const std::vector<Bullet>& GetBullets() const { return mBullets; }
 	const std::vector<Player>& GetPlayers() const { return mPlayers; }
@@ -47,13 +47,13 @@ public:
 private:
 	static constexpr float SPAWN_POS_X = H_VP_WIDTH;
 
-	uint8_t GeneratePlayerID();
+	sf::Uint8 GeneratePlayerID();
 	bool IsLaneOccupied(int lane) const;
 
 	// Player ID
-	uint8_t mNewPID = 1;
+	sf::Uint8 mNewPID = 1;
 	// Entity ID (bullets)
-	uint32_t mNewEID = 1;
+	sf::Uint32 mNewEID = 1;
 
 	std::vector<Player> mPlayers;
 	std::vector<Bullet> mBullets;
@@ -66,8 +66,8 @@ sf::Packet& operator >> (sf::Packet& p, World& world);
 struct WorldSnapshot
 {
 	World snapshot;
-	uint64_t serverTime = 0;
-	uint64_t clientTime = 0;
+	sf::Uint64 serverTime = 0;
+	sf::Uint64 clientTime = 0;
 };
 
 sf::Packet& operator<<(sf::Packet& p, const WorldSnapshot& snapshot);

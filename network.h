@@ -5,16 +5,16 @@
 
 // Network.h: Contains code that is shared between Client and Server
 
-#define DEF_SERVER_RECV(type)		void Receive_ ## type ## (ConnectionPtr connection, sf::Packet& p)
-#define DEF_SERVER_SEND(type)		void Send_ ## type ## (ConnectionPtr connection)
+#define DEF_SERVER_RECV(type)		void Receive_##type(ConnectionPtr connection, sf::Packet& p)
+#define DEF_SERVER_SEND(type)		void Send_##type(ConnectionPtr connection)
 
-#define DEF_CLIENT_RECV(type)		bool Receive_ ## type ## (sf::Packet& p)
-#define DEF_CLIENT_SEND(type)		void Send_ ## type ## ()
+#define DEF_CLIENT_RECV(type)		bool Receive_##type(sf::Packet& p)
+#define DEF_CLIENT_SEND(type)		void Send_##type()
 
-#define DEF_SEND_PARAM(type)		void Send_ ## type
+#define DEF_SEND_PARAM(type)		void Send_##type
 
-#define RECV(type)					Receive_ ## type
-#define SEND(type)					Send_ ## type
+#define RECV(type)					Receive_##type
+#define SEND(type)					Send_##type
 
 namespace Network
 {
@@ -74,7 +74,8 @@ sf::Packet& operator >> (sf::Packet& p, sf::Vector2f& v);
 template<typename T>
 sf::Packet& operator<<(sf::Packet& p, const std::vector<T>& v)
 {
-	p << v.size();
+	sf::Uint32 size = v.size();
+	p << size;
 	for (const auto& i : v)
 		p << i;
 
@@ -84,7 +85,7 @@ sf::Packet& operator<<(sf::Packet& p, const std::vector<T>& v)
 template<typename T>
 sf::Packet& operator >> (sf::Packet& p, std::vector<T>& v)
 {
-	size_t size;
+	sf::Uint32 size;
 	p >> size;
 	v.resize(size);
 

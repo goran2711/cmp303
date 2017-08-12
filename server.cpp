@@ -96,7 +96,7 @@ namespace Network
 			connection->Send(p);
 		}
 
-		DEF_SEND_PARAM(PACKET_SERVER_PING)(ConnectionPtr connection, uint64_t timestamp, bool pingBack)
+		DEF_SEND_PARAM(PACKET_SERVER_PING)(ConnectionPtr connection, sf::Uint64 timestamp, bool pingBack)
 		{
 			//// Respond to a client's ping message by sending back the time they sent their ping
 			// pingBack: If we want the client to ping us back
@@ -135,7 +135,7 @@ namespace Network
 			// gElapsedTime.count(): Timestamp of when the bullet was spawned
 
 			auto p = InitPacket(PACKET_SERVER_SHOOT);
-			p << bullet << gElapsedTime.count();
+			p << bullet << sf::Uint32(gElapsedTime.count());
 
 			connection->Send(p);
 		}
@@ -152,7 +152,7 @@ namespace Network
 			Player player;
 
 			// Arbitrarily decide a colour for the player
-			static const uint32_t PADDLE_COLOURS[] = {
+			static const sf::Uint32 PADDLE_COLOURS[] = {
 				0xA0A0FFFF,
 				0xFFA0A0FF,
 				0xA0FFA0FF,
@@ -219,7 +219,7 @@ namespace Network
 			if (connection->status != STATUS_PLAYING)
 				return;
 
-			uint64_t serverTime, clientTime;
+			sf::Uint64 serverTime, clientTime;
 			p >> serverTime >> clientTime;
 
 			connection->latency = gElapsedTime - ms(serverTime);
@@ -236,7 +236,7 @@ namespace Network
 				return;
 
 			// The time at which the shot was fired by the client
-			uint64_t shotFiredTime = gElapsedTime.count() - connection->latency.count();
+			sf::Uint64 shotFiredTime = gElapsedTime.count() - connection->latency.count();
 
 			// Find the snapshot where the bullet was fired
 			auto snapshotIterator = std::find_if(gSnapshots.begin(), gSnapshots.end(), [&](const auto& ss) {

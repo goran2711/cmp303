@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
-
+#include <SFML/System.hpp>
+	
 namespace sf
 {
 	class Packet;
@@ -8,13 +9,13 @@ namespace sf
 
 struct Command
 {
-	uint32_t id;
+	sf::Uint32 id;
 	// Keyboard state
 	enum Direction
 	{
 		IDLE, LEFT, RIGHT
 	} direction;
-	uint64_t dt;
+	sf::Uint64 dt;
 };
 
 sf::Packet& operator<<(sf::Packet& p, const Command& cmd);
