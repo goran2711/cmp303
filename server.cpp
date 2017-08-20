@@ -275,7 +275,7 @@ namespace Network
 		}
 
 		using ServerReceiveCallback = std::function<void(ConnectionPtr, sf::Packet&)>;
-		const ServerReceiveCallback _receivePacket[] = {
+		const ServerReceiveCallback gReceivePacket[] = {
 				RECV(PACKET_CLIENT_JOIN),
 				nullptr,					// PACKET_SERVER_WELCOME
 				nullptr,					// PACKET_SERVER_SPECTATOR
@@ -351,8 +351,8 @@ namespace Network
 				p >> type;
 
 				// Call the appropriate receive function based on the packet-type
-				if (type < PACKET_END && _receivePacket[type] != nullptr && connection->active)
-					_receivePacket[type](connection, p);
+				if (type < PACKET_END && gReceivePacket[type] != nullptr && connection->active)
+					gReceivePacket[type](connection, p);
 			}
 		}
 

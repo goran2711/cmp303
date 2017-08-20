@@ -2,7 +2,6 @@
 	Project is x64
 */
 
-#include <thread>
 #include "server.h"
 #include "client.h"
 #include "debug.h"
