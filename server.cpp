@@ -135,7 +135,7 @@ namespace Network
 			// gElapsedTime.count(): Timestamp of when the bullet was spawned
 
 			auto p = InitPacket(PACKET_SERVER_SHOOT);
-			p << bullet << sf::Uint32(gElapsedTime.count());
+			p << bullet << sf::Uint64(gElapsedTime.count());
 
 			connection->Send(p);
 		}

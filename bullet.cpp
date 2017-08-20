@@ -1,7 +1,7 @@
 #include "bullet.h"
 #include "network.h"
 
-void Bullet::Update(uint64_t dt)
+void Bullet::Update(sf::Uint64 dt)
 {
 	mPosition += mDirection * BULLET_SPEED * (dt / 1000.f);
 }

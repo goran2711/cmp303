@@ -262,8 +262,6 @@ namespace Network
 						// newBullet: The bullet object
 						// serverTime: The timestamp the bullet was spawned on the server
 
-						debug << "CLIENT: Received SERVER_SHOOT" << std::endl;
-
 						if (gConnection.status != STATUS_PLAYING && gConnection.status != STATUS_SPECTATING)
 								return true;
 
@@ -580,11 +578,10 @@ namespace Network
 										// Check if we have passed a snapshot where a new bullet was fired
 										for (auto it = gIncomingBullets.begin(); it != gIncomingBullets.end(); )
 										{
-												if (from->serverTime >= it->serverTime)
+												if (it->serverTime <= from->serverTime)
 												{
 														gWorld.AddBullet(it->bullet);
 														it = gIncomingBullets.erase(it);
-														debug << "Incoming bullets: " << gIncomingBullets.size() << std::endl;
 												}
 												else
 														++it;

@@ -4,19 +4,19 @@
 
 // common.h: Commonly used variables and shorthands
 
-constexpr unsigned int VP_WIDTH = 800;
-constexpr unsigned int VP_HEIGHT = 600;
+constexpr unsigned int VP_WIDTH = 426;
+constexpr unsigned int VP_HEIGHT = 240;
 
 constexpr float H_VP_WIDTH = VP_WIDTH * 0.5f;
 constexpr float H_VP_HEIGHT = VP_HEIGHT * 0.5f;
 
-constexpr float PADDLE_W = 128.f;
-constexpr float PADDLE_H = 16.f;
+constexpr float PADDLE_W = 80.f;
+constexpr float PADDLE_H = 12.f;
 
 constexpr float H_PADDLE_W = PADDLE_W * 0.5f;
 constexpr float H_PADDLE_H = PADDLE_H * 0.5f;
 
-constexpr float BULLET_W = 16.f;
+constexpr float BULLET_W = 8.f;
 constexpr float BULLET_H = 24.f;
 
 constexpr float H_BULLET_W = BULLET_W * 0.5f;

@@ -16,8 +16,8 @@ public:
 
 	static constexpr int MAX_PLAYERS = 2;
 
-	static constexpr float LANE_BOTTOM = 568.f;
-	static constexpr float LANE_TOP = 32.f;
+	static constexpr float LANE_BOTTOM = 228.f;
+	static constexpr float LANE_TOP = 12.f;
 
 	static const sf::Vector2f INVALID_POS;
 

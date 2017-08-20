@@ -16,21 +16,21 @@ public:
 
 	constexpr static float BULLET_SPEED = 400.f;
 
-	void Update(uint64_t dt);
+	void Update(sf::Uint64 dt);
 
-	void SetID(uint32_t id) { mID = id; }
-	void SetColour(uint32_t colour) { mColour = colour; }
+	void SetID(sf::Uint32 id) { mID = id; }
+	void SetColour(sf::Uint32 colour) { mColour = colour; }
 	void SetDirection(const sf::Vector2f& direction) { mDirection = direction; }
 	void SetPosition(const sf::Vector2f& position) { mPosition = position; }
 	
-	uint32_t GetID() const { return mID; }
-	uint32_t GetColour() const { return mColour; }
+	sf::Uint32 GetID() const { return mID; }
+	sf::Uint32 GetColour() const { return mColour; }
 	sf::Vector2f GetDirection() const { return mDirection; }
 	sf::Vector2f GetPosition() const { return mPosition; }
 
 private:
-	uint32_t mID;
-	uint32_t mColour;
+	sf::Uint32 mID;
+	sf::Uint32 mColour;
 	sf::Vector2f mDirection;
 	sf::Vector2f mPosition;
 };
