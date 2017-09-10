@@ -4,8 +4,8 @@
 
 // common.h: Commonly used variables and shorthands
 
-constexpr unsigned int VP_WIDTH = 426;
-constexpr unsigned int VP_HEIGHT = 240;
+constexpr unsigned int VP_WIDTH = 800;
+constexpr unsigned int VP_HEIGHT = 600;
 
 constexpr float H_VP_WIDTH = VP_WIDTH * 0.5f;
 constexpr float H_VP_HEIGHT = VP_HEIGHT * 0.5f;
