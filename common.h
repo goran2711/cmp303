@@ -30,4 +30,7 @@ using the_clock = std::chrono::high_resolution_clock;
 using time_point = std::chrono::time_point<the_clock>;
 using ms = std::chrono::milliseconds;
 
-#define to_ms(s, e) std::chrono::duration_cast<ms>(e - s)
+inline ms to_ms(const time_point& start, const time_point& end)
+{
+  return std::chrono::duration_cast<ms>(end - start);
+}
