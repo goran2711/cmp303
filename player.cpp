@@ -5,8 +5,8 @@
 
 void Player::RunCommand(const Command& cmd, bool rec)
 {
-	constexpr uint32_t KEY_A = 1 << Key::A;
-	constexpr uint32_t KEY_D = 1 << Key::D;
+	constexpr sf::Uint32 KEY_A = 1 << Key::A;
+	constexpr sf::Uint32 KEY_D = 1 << Key::D;
 
 	mLastCommandID = cmd.id;
 

@@ -52,7 +52,7 @@ bool World::AddPlayer(Player& player)
 	if (mPlayers.size() >= MAX_PLAYERS)
 		return false;
 
-	uint8_t newPID = GeneratePlayerID();
+	sf::Uint8 newPID = GeneratePlayerID();
 
 	if (!newPID)
 		return false;
@@ -71,7 +71,7 @@ bool World::AddPlayer(Player& player)
 	return true;
 }
 
-bool World::RemovePlayer(uint8_t id)
+bool World::RemovePlayer(sf::Uint8 id)
 {
 	auto hasPID = [id](const auto& player) { return player.GetID() == id; };
 
@@ -85,7 +85,7 @@ void World::UpdateWorld(const World & other)
 	mServerBullets = other.mBullets;
 }
 
-void World::RunCommand(const Command& cmd, uint8_t id, bool rec)
+void World::RunCommand(const Command& cmd, sf::Uint8 id, bool rec)
 {
 	Player* player = GetPlayer(id);
 
@@ -101,7 +101,7 @@ void World::RunCommand(const Command& cmd, uint8_t id, bool rec)
 	}
 }
 
-Bullet World::PlayerShoot(uint8_t id, sf::Vector2f playerPos)
+Bullet World::PlayerShoot(sf::Uint8 id, sf::Vector2f playerPos)
 {
 	Player* player = GetPlayer(id);
 	if (!player)
@@ -163,7 +163,7 @@ Bullet* World::GetBullet(sf::Uint32 id)
 	return nullptr;
 }
 
-bool World::IsPlayerTopLane(uint8_t id)
+bool World::IsPlayerTopLane(sf::Uint8 id)
 {
 	Player* player = GetPlayer(id);
 	if (!player)
@@ -172,7 +172,7 @@ bool World::IsPlayerTopLane(uint8_t id)
 	return player->GetPosition().y == LANE_TOP;
 }
 
-Player* World::GetPlayer(uint8_t id)
+Player* World::GetPlayer(sf::Uint8 id)
 {
 	for (auto& player : mPlayers)
 	{
@@ -183,12 +183,12 @@ Player* World::GetPlayer(uint8_t id)
 	return nullptr;
 }
 
-bool World::PlayerExists(uint8_t id)
+bool World::PlayerExists(sf::Uint8 id)
 {
 	return GetPlayer(id) != nullptr;
 }
 
-uint8_t World::GeneratePlayerID()
+sf::Uint8 World::GeneratePlayerID()
 {
 	return mNewPID++;
 }

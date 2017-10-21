@@ -40,7 +40,7 @@ namespace Network
 		void SetBlocking(bool val);
 
 		// PlayerID
-		uint8_t pid;
+		sf::Uint8 pid;
 		bool active = false;
 		ms latency;
 		ConnectionStatus status = STATUS_NONE;

@@ -30,7 +30,7 @@ namespace Network
 				// Game
 				ms gElapsedTime;
 
-				uint8_t gMyID;
+				sf::Uint8 gMyID;
 				World gWorld;
 
 				std::list<Command> gCommands;
@@ -235,7 +235,7 @@ namespace Network
 										return false;
 
 								// ID of the last command the server processed
-								uint32_t lastCommandID = me->GetLastCommandID();
+								sf::Uint32 lastCommandID = me->GetLastCommandID();
 
 								// Remove older commands
 								const auto pred = [lastCommandID](const auto& cmd)
@@ -367,7 +367,7 @@ namespace Network
 								if (!gConnection.Receive(p))
 										break;
 
-								uint8_t type;
+								sf::Uint8 type;
 								p >> type;
 
 								// Call the appropriate receive function based on the packet-type
@@ -456,7 +456,7 @@ namespace Network
 				// and possibly run locally (prediction)
 				void BuildCommand(ms dt)
 				{
-						static uint32_t commandID = 0;
+						static sf::Uint32 commandID = 0;
 
 						if (gWindow->hasFocus())
 						{

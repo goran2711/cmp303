@@ -19,8 +19,8 @@ public:
 
 	void RunCommand(const Command& cmd, bool rec);
 
-	void SetPID(uint8_t pid) { mPID = pid; }
-	void SetColour(uint32_t RGBA) { mColour = RGBA; }
+	void SetPID(sf::Uint8 pid) { mPID = pid; }
+	void SetColour(sf::Uint32 RGBA) { mColour = RGBA; }
 
 	void SetX(float x) { mPosition.x = x; }
 	void SetY(float y) { mPosition.y = y; }
@@ -28,14 +28,14 @@ public:
 	
 	void SetLastCommandID(int id) { mLastCommandID = id; }
 
-	uint8_t GetID() const { return mPID; }
-	uint32_t GetColour() const { return mColour; }
+	sf::Uint8 GetID() const { return mPID; }
+	sf::Uint32 GetColour() const { return mColour; }
 	int GetLastCommandID() const { return mLastCommandID; }
 	sf::Vector2f GetPosition() const { return mPosition; }
 
 private:
-	uint8_t mPID;
-	uint32_t mColour;
+	sf::Uint8 mPID;
+	sf::Uint32 mColour;
 	int mLastCommandID;
 	sf::Vector2f mPosition;
 };

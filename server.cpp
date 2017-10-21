@@ -347,7 +347,7 @@ namespace Network
 				if (!connection->Receive(p))
 					break;
 
-				uint8_t type;
+				sf::Uint8 type;
 				p >> type;
 
 				// Call the appropriate receive function based on the packet-type
